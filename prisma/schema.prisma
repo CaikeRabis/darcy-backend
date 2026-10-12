@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum ProjectType {
+  artigo
+  dissertacao
+  tese
+  tcc
+  projeto_pesquisa @map("projeto-pesquisa")
+  resumo_academico @map("resumo-academico")
+}
+
+model Profile {
+  /// UUID correspondente a auth.users.id, gerenciado pelo Supabase Auth.
+  id        String    @id @db.Uuid
+  projects  Project[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("profiles")
+}
+
+model Project {
+  id                      String                   @id @default(cuid())
+  profileId               String                   @map("profile_id") @db.Uuid
+  title                   String
+  field                   String
+  type                    ProjectType
+  profile                 Profile                  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  resumoAcademicoProgress ResumoAcademicoProgress?
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  updatedAt               DateTime                 @updatedAt @map("updated_at")
+
+  @@index([profileId])
+  @@map("projects")
+}
+
+model ResumoAcademicoProgress {
+  id        String   @id @default(cuid())
+  projectId String   @unique @map("project_id")
+  progress  Json     @db.JsonB
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("resumo_academico_progress")
+}

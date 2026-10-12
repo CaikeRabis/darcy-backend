@@ -32,7 +32,7 @@ export type ProjectType =
 
 /**
  * Contexto mínimo do projeto que o frontend envia em cada requisição.
- * O controller valida e repassa ao GeminiService.
+ * O controller valida e repassa ao AIService.
  */
 export interface ProjectContext {
   /** Título do projeto de pesquisa */
@@ -40,7 +40,7 @@ export interface ProjectContext {
   /** Tipo de trabalho acadêmico */
   projectType: ProjectType
   /** Fase metodológica ativa */
-  currentPhase: PhaseId
+  currentPhase: PhaseId | 'resumo-academico'
   /** Conteúdo da seção ativa no editor (texto plano) */
   activeSectionContent?: string
   /** Área/linha de pesquisa do projeto */

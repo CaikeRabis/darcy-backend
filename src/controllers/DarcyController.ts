@@ -3,7 +3,7 @@
  * ═══════════════════════════════════════════════════════════════════
  * Responsável por:
  *   • Receber e validar requisições HTTP
- *   • Delegar ao GeminiService
+ *   • Delegar ao AIService
  *   • Serializar respostas para o frontend
  *
  * Não contém lógica de negócio — apenas orquestração HTTP ↔ Service.
@@ -11,7 +11,11 @@
 
 import type { Request, Response } from 'express'
 import { z } from 'zod'
-import { GeminiService } from '../services/GeminiService'
+import { AIService } from '../services/ai/AIService'
+import {
+  getConfiguredAIModel,
+  getConfiguredAIProviderName,
+} from '../services/ai/providerFactory'
 
 /* ------------------------------------------------------------------ */
 /* Schemas de validação (Zod)                                          */
@@ -36,7 +40,7 @@ const ChatRequestSchema = z.object({
       'artigo', 'dissertacao', 'tese', 'tcc', 'projeto-pesquisa', 'resumo-academico',
     ]),
     currentPhase: z.enum([
-      'tema', 'problema', 'referencial', 'metodologia', 'resultados', 'discussao', 'conclusao',
+      'tema', 'problema', 'referencial', 'metodologia', 'resultados', 'discussao', 'conclusao', 'resumo-academico',
     ]),
     activeSectionContent: z.string().optional(),
     researchField: z.string().optional(),
@@ -86,11 +90,8 @@ export class DarcyController {
 
     const { userMessage, context } = parseResult.data
 
-    console.log('[Backend] Recebeu - Body:', req.body)
-    console.log('[Backend] Context Tema:', context.projectTitle)
-
     // 2. Delega ao serviço
-    const service = GeminiService.getInstance()
+    const service = AIService.getInstance()
     const result = await service.generateDarcyResponse(context, userMessage)
 
     // 3. Serializa a resposta
@@ -123,7 +124,7 @@ export class DarcyController {
 
     const { actionId, context } = parseResult.data
 
-    const service = GeminiService.getInstance()
+    const service = AIService.getInstance()
     const result = await service.executeQuickAction(actionId, context)
 
     if (!result.ok) {
@@ -145,7 +146,8 @@ export class DarcyController {
         status: 'online',
         service: 'DARCY API',
         timestamp: new Date().toISOString(),
-        geminiModel: 'gemini-1.5-flash',
+        aiProvider: getConfiguredAIProviderName(),
+        aiModel: getConfiguredAIModel(),
       },
     })
   }

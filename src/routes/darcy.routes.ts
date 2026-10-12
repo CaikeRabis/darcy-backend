@@ -13,16 +13,18 @@
 
 import { Router } from 'express'
 import { DarcyController } from '../controllers/DarcyController'
+import { requireAuth } from '../middlewares/requireAuth'
 
 const router = Router()
 
 // Health check — não requer autenticação
 router.get('/health', DarcyController.health)
 
-// Chat principal — mensagem do pesquisador → resposta do DARCY
-router.post('/chat', DarcyController.chat)
+// Chat principal — mensagem do pesquisador → resposta do DARCY.
+// O serviço não depende de Profile/Project; o JWT validado é a identidade necessária.
+router.post('/chat', requireAuth, DarcyController.chat)
 
 // Ações Rápidas do editor (validar coerência, sugerir refs, etc.)
-router.post('/quick-action', DarcyController.quickAction)
+router.post('/quick-action', requireAuth, DarcyController.quickAction)
 
 export default router

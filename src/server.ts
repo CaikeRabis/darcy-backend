@@ -7,6 +7,10 @@
 
 import 'dotenv/config'
 import app from './app'
+import {
+  getConfiguredAIModel,
+  getConfiguredAIProviderName,
+} from './services/ai/providerFactory'
 
 const PORT = Number(process.env.PORT) || 3001
 
@@ -15,10 +19,13 @@ const PORT = Number(process.env.PORT) || 3001
 /* ------------------------------------------------------------------ */
 
 function validateEnvironment(): void {
-  const required: string[] = ['GEMINI_API_KEY']
+  const provider = getConfiguredAIProviderName()
+  const required: string[] = provider === 'openai'
+    ? ['OPENAI_API_KEY']
+    : ['GEMINI_API_KEY']
 
   const missing = required.filter(
-    (key) => !process.env[key] || process.env[key] === 'your_gemini_api_key_here',
+    (key) => !process.env[key]?.trim() || process.env[key]?.startsWith('your_'),
   )
 
   if (missing.length > 0) {
@@ -38,13 +45,17 @@ function validateEnvironment(): void {
 validateEnvironment()
 
 const server = app.listen(PORT, () => {
+  const provider = getConfiguredAIProviderName()
+  const model = getConfiguredAIModel()
+
   console.log(`
 ╔═══════════════════════════════════════════╗
 ║         DARCY API — Online                ║
 ╠═══════════════════════════════════════════╣
 ║  Porta  : ${PORT.toString().padEnd(33)}║
 ║  Ambiente: ${(process.env.NODE_ENV ?? 'development').padEnd(32)}║
-║  Modelo  : gemini-1.5-flash               ║
+║  Provedor: ${provider.padEnd(32)}║
+║  Modelo  : ${model.padEnd(33)}║
 ╚═══════════════════════════════════════════╝
   `)
 })

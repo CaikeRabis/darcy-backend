@@ -1,0 +1,44 @@
+name: Backend CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Qualidade do backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Não há .nvmrc, engines ou Volta no repositório. Esta é a versão
+      # efetivamente usada para validar o projeto no momento da criação da CI.
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Testes Vitest
+        run: npm test
+
+      - name: Validar schema Prisma
+        env:
+          # Valores sintáticos e descartáveis: prisma validate não conecta ao banco.
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/darcy_ci
+          DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/darcy_ci
+        run: npx prisma validate
