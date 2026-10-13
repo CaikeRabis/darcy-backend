@@ -7,6 +7,7 @@
 
 import 'dotenv/config'
 import app from './app'
+import { validateEnvironment } from './config/environment'
 import {
   getConfiguredAIModel,
   getConfiguredAIProviderName,
@@ -15,34 +16,16 @@ import {
 const PORT = Number(process.env.PORT) || 3001
 
 /* ------------------------------------------------------------------ */
-/* Validação de ambiente na inicialização                              */
-/* ------------------------------------------------------------------ */
-
-function validateEnvironment(): void {
-  const provider = getConfiguredAIProviderName()
-  const required: string[] = provider === 'openai'
-    ? ['OPENAI_API_KEY']
-    : ['GEMINI_API_KEY']
-
-  const missing = required.filter(
-    (key) => !process.env[key]?.trim() || process.env[key]?.startsWith('your_'),
-  )
-
-  if (missing.length > 0) {
-    console.error(
-      `\n❌ [DARCY] Variáveis de ambiente obrigatórias não configuradas:\n` +
-      missing.map((k) => `   • ${k}`).join('\n') +
-      `\n\n   → Copie .env.example para .env e preencha os valores.\n`
-    )
-    process.exit(1)
-  }
-}
-
-/* ------------------------------------------------------------------ */
 /* Inicialização                                                       */
 /* ------------------------------------------------------------------ */
 
-validateEnvironment()
+try {
+  validateEnvironment()
+} catch (error) {
+  const message = error instanceof Error ? error.message : 'Configuração de ambiente inválida.'
+  console.error(`\n❌ [DARCY] ${message}\n   → Copie .env.example para .env e preencha os valores.\n`)
+  process.exit(1)
+}
 
 const server = app.listen(PORT, () => {
   const provider = getConfiguredAIProviderName()

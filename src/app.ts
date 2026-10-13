@@ -80,7 +80,11 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   const isCorsOriginError = err instanceof CorsOriginNotAllowedError
   const status = isCorsOriginError ? err.statusCode : 500
 
-  console.error('[App] Erro não tratado:', err)
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[App] Erro não tratado.', { name: err.name })
+  } else {
+    console.error('[App] Erro não tratado:', err)
+  }
   res.status(status).json({
     ok: false,
     error: {

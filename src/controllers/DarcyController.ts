@@ -11,11 +11,8 @@
 
 import type { Request, Response } from 'express'
 import { z } from 'zod'
+import { verifyDatabaseReadiness } from '../lib/readiness'
 import { AIService } from '../services/ai/AIService'
-import {
-  getConfiguredAIModel,
-  getConfiguredAIProviderName,
-} from '../services/ai/providerFactory'
 
 /* ------------------------------------------------------------------ */
 /* Schemas de validação (Zod)                                          */
@@ -137,18 +134,38 @@ export class DarcyController {
 
   /**
    * GET /api/darcy/health
-   * Health check simples para monitoramento.
+   * Liveness: confirma somente que o processo HTTP está em execução.
    */
   static health(_req: Request, res: Response): void {
     res.status(200).json({
       ok: true,
       data: {
-        status: 'online',
-        service: 'DARCY API',
-        timestamp: new Date().toISOString(),
-        aiProvider: getConfiguredAIProviderName(),
-        aiModel: getConfiguredAIModel(),
+        status: 'alive',
       },
     })
+  }
+
+  /**
+   * GET /api/darcy/ready
+   * Readiness: confirma que a dependência de banco necessária ao domínio responde.
+   */
+  static async readiness(_req: Request, res: Response): Promise<void> {
+    try {
+      await verifyDatabaseReadiness()
+      res.status(200).json({
+        ok: true,
+        data: {
+          status: 'ready',
+        },
+      })
+    } catch {
+      res.status(503).json({
+        ok: false,
+        error: {
+          code: 'NOT_READY',
+          message: 'Serviço indisponível temporariamente.',
+        },
+      })
+    }
   }
 }

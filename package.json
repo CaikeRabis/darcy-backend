@@ -16,6 +16,9 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate"
   },
+  "engines": {
+    "node": ">=24.21.0 <25"
+  },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "@prisma/client": "^6.19.3",

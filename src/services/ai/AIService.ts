@@ -244,7 +244,9 @@ export class AIService {
   }
 
   private logProviderSuccess(): void {
-    console.log(`[DARCY IA] Provedor: ${this.provider.name} | Modelo: ${this.provider.model}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[DARCY IA] Provedor: ${this.provider.name} | Modelo: ${this.provider.model}`)
+    }
   }
 
   private handleError(error: unknown): ApiResponse<never> {

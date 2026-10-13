@@ -12,9 +12,9 @@ export class CorsOriginNotAllowedError extends Error {
   }
 }
 
-function getAllowedOrigins(): string[] {
-  const environment = process.env.NODE_ENV
-  const configuredOrigin = process.env.CORS_ORIGIN?.trim()
+function getAllowedOrigins(environmentVariables: NodeJS.ProcessEnv = process.env): string[] {
+  const environment = environmentVariables.NODE_ENV
+  const configuredOrigin = environmentVariables.CORS_ORIGIN?.trim()
 
   if (environment === 'production') {
     if (configuredOrigin !== PRODUCTION_ORIGIN) {
@@ -33,6 +33,16 @@ function getAllowedOrigins(): string[] {
   }
 
   return [DEVELOPMENT_ORIGIN]
+}
+
+/**
+ * Valida a origem permitida antes de o servidor aceitar tráfego.
+ * Exportada para que a validação de ambiente possa ser testada sem mutar process.env.
+ */
+export function validateCorsConfiguration(
+  environmentVariables: NodeJS.ProcessEnv = process.env,
+): void {
+  getAllowedOrigins(environmentVariables)
 }
 
 export function createCorsOptions(): CorsOptions {

@@ -6,8 +6,10 @@ import { OpenAIProvider } from './providers/openai.provider'
 
 let providerInstance: AIProvider | undefined
 
-export function getConfiguredAIProviderName(): AIProviderName {
-  const configured = process.env.AI_PROVIDER?.trim().toLowerCase() || 'gemini'
+export function getConfiguredAIProviderName(
+  environmentVariables: NodeJS.ProcessEnv = process.env,
+): AIProviderName {
+  const configured = environmentVariables.AI_PROVIDER?.trim().toLowerCase() || 'gemini'
 
   if (configured !== 'gemini' && configured !== 'openai') {
     throw new Error('AI_PROVIDER deve ser "gemini" ou "openai".')

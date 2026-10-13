@@ -6,7 +6,8 @@
  * Prefixo base (definido em server.ts): /api/darcy
  *
  * Endpoints disponíveis:
- *   GET  /api/darcy/health          → Health check
+ *   GET  /api/darcy/health          → Liveness
+ *   GET  /api/darcy/ready           → Readiness
  *   POST /api/darcy/chat            → Conversa principal com o DARCY
  *   POST /api/darcy/quick-action    → Ações rápidas do editor
  */
@@ -19,6 +20,7 @@ const router = Router()
 
 // Health check — não requer autenticação
 router.get('/health', DarcyController.health)
+router.get('/ready', DarcyController.readiness)
 
 // Chat principal — mensagem do pesquisador → resposta do DARCY.
 // O serviço não depende de Profile/Project; o JWT validado é a identidade necessária.

@@ -15,12 +15,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Não há .nvmrc, engines ou Volta no repositório. Esta é a versão
-      # efetivamente usada para validar o projeto no momento da criação da CI.
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24.21.0
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: package-lock.json
 
