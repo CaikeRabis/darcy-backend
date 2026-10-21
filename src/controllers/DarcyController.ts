@@ -12,7 +12,9 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 import { verifyDatabaseReadiness } from '../lib/readiness'
+import { getE2EEnvironmentIdentity } from '../config/e2eEnvironment'
 import { AIService } from '../services/ai/AIService'
+import { getOwnedResumoAutoralDecisionContext } from '../services/ResumoAcademicoService'
 
 /* ------------------------------------------------------------------ */
 /* Schemas de validação (Zod)                                          */
@@ -32,6 +34,7 @@ const ChatRequestSchema = z.object({
     .min(1, 'A mensagem não pode estar vazia.')
     .max(4000, 'Mensagem muito longa.'),
   context: z.object({
+    projectId: z.string().min(1).max(100).optional(),
     projectTitle: z.string().min(1),
     projectType: z.enum([
       'artigo', 'dissertacao', 'tese', 'tcc', 'projeto-pesquisa', 'resumo-academico',
@@ -86,10 +89,47 @@ export class DarcyController {
     }
 
     const { userMessage, context } = parseResult.data
+    let contextualizedContext = context
+
+    // A decisão não é aceita do cliente: quando há Project, ela é recuperada
+    // exclusivamente pelo backend sob o profile autenticado.
+    if (context.projectId) {
+      try {
+        const decisao = await getOwnedResumoAutoralDecisionContext(
+          context.projectId,
+          req.authUser!.id,
+        )
+
+        if (decisao === undefined) {
+          res.status(404).json({
+            ok: false,
+            error: {
+              code: 'PROJECT_NOT_FOUND',
+              message: 'Projeto não encontrado.',
+            },
+          })
+          return
+        }
+
+        contextualizedContext = {
+          ...context,
+          ...(decisao ? { decisaoAutoralContextual: decisao } : {}),
+        }
+      } catch {
+        res.status(500).json({
+          ok: false,
+          error: {
+            code: 'PROJECT_CONTEXT_UNAVAILABLE',
+            message: 'Não foi possível recuperar o contexto do projeto.',
+          },
+        })
+        return
+      }
+    }
 
     // 2. Delega ao serviço
     const service = AIService.getInstance()
-    const result = await service.generateDarcyResponse(context, userMessage)
+    const result = await service.generateDarcyResponse(contextualizedContext, userMessage)
 
     // 3. Serializa a resposta
     if (!result.ok) {
@@ -137,10 +177,13 @@ export class DarcyController {
    * Liveness: confirma somente que o processo HTTP está em execução.
    */
   static health(_req: Request, res: Response): void {
+    const e2eEnvironment = getE2EEnvironmentIdentity()
+
     res.status(200).json({
       ok: true,
       data: {
         status: 'alive',
+        ...(e2eEnvironment ? { e2eEnvironment } : {}),
       },
     })
   }

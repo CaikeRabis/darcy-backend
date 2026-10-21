@@ -42,6 +42,27 @@ export async function getResumoAcademicoProgress(
   return progress ? parsePersistedProgress(progress.progress) : null
 }
 
+/**
+ * Recupera somente a decisão contextual que pertence ao Project do usuário autenticado.
+ * `undefined` indica Project inexistente, não pertencente ao usuário ou de outro módulo.
+ */
+export async function getOwnedResumoAutoralDecisionContext(
+  projectId: string,
+  profileId: string,
+): Promise<string | null | undefined> {
+  const progress = await getResumoAcademicoProgress(projectId, profileId)
+
+  if (progress === undefined || progress === null) return progress
+
+  const decisao = progress.decisoes_autorais?.find(
+    (item) => item.id === 'contexto_problema_central',
+  )
+
+  if (!decisao) return null
+
+  return `Problema central escolhido pelo pesquisador: ${decisao.escolha}\nJustificativa informada pelo pesquisador: ${decisao.justificativa}`
+}
+
 export async function upsertResumoAcademicoProgress(
   projectId: string,
   profileId: string,

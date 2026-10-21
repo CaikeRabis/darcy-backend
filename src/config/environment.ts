@@ -1,4 +1,5 @@
 import { validateCorsConfiguration } from './cors'
+import { getE2EEnvironmentIdentity } from './e2eEnvironment'
 import { getConfiguredAIProviderName } from '../services/ai/providerFactory'
 
 export class EnvironmentConfigurationError extends Error {
@@ -47,6 +48,8 @@ export function validateEnvironment(
     environmentVariables,
     provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY',
   )
+
+  getE2EEnvironmentIdentity(environmentVariables)
 
   try {
     validateCorsConfiguration(environmentVariables)

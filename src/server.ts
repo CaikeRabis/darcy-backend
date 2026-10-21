@@ -5,13 +5,15 @@
  * e inicializa o servidor Express na porta configurada.
  */
 
-import 'dotenv/config'
+import { loadRuntimeEnvironment } from './config/loadEnvironment'
 import app from './app'
 import { validateEnvironment } from './config/environment'
 import {
   getConfiguredAIModel,
   getConfiguredAIProviderName,
 } from './services/ai/providerFactory'
+
+loadRuntimeEnvironment()
 
 const PORT = Number(process.env.PORT) || 3001
 
@@ -23,7 +25,7 @@ try {
   validateEnvironment()
 } catch (error) {
   const message = error instanceof Error ? error.message : 'Configuração de ambiente inválida.'
-  console.error(`\n❌ [DARCY] ${message}\n   → Copie .env.example para .env e preencha os valores.\n`)
+  console.error(`\n❌ [DARCY] ${message}\n   → Confira o perfil de ambiente selecionado e as variáveis obrigatórias.\n`)
   process.exit(1)
 }
 

@@ -3,6 +3,7 @@ import {
   EnvironmentConfigurationError,
   validateEnvironment,
 } from '../../src/config/environment'
+import { getE2EEnvironmentIdentity } from '../../src/config/e2eEnvironment'
 
 function createValidEnvironment(): NodeJS.ProcessEnv {
   return {
@@ -48,5 +49,86 @@ describe('validação de ambiente', () => {
     invalidProductionCors.NODE_ENV = 'production'
     invalidProductionCors.CORS_ORIGIN = 'https://outro-dominio.example'
     expect(() => validateEnvironment(invalidProductionCors)).toThrow('CORS_ORIGIN')
+  })
+
+  it('aceita E2E somente quando Auth e banco derivam a referência esperada', () => {
+    const environment = createValidEnvironment()
+    environment.DARCY_E2E_GUARD = 'enabled'
+    environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'e2eproject1'
+    environment.DARCY_ALPHA_SUPABASE_PROJECT_REF = 'alphaproject1'
+    environment.SUPABASE_URL = 'https://e2eproject1.supabase.co'
+    environment.DATABASE_URL = 'postgresql://postgres:password@db.e2eproject1.supabase.co:5432/postgres'
+    environment.DIRECT_URL = 'postgresql://postgres:password@db.e2eproject1.supabase.co:5432/postgres'
+
+    expect(() => validateEnvironment(environment)).not.toThrow()
+    expect(getE2EEnvironmentIdentity(environment)).toEqual({ supabaseProjectRef: 'e2eproject1' })
+  })
+
+  it('aceita Session pooler do Supabase para runtime e operações Prisma E2E', () => {
+    const environment = createValidEnvironment()
+    environment.DARCY_E2E_GUARD = 'enabled'
+    environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'e2eproject1'
+    environment.DARCY_ALPHA_SUPABASE_PROJECT_REF = 'alphaproject1'
+    environment.SUPABASE_URL = 'https://e2eproject1.supabase.co'
+    environment.DATABASE_URL = 'postgresql://postgres.e2eproject1:password@aws-0-test.pooler.supabase.com:5432/postgres'
+    environment.DIRECT_URL = 'postgresql://postgres.e2eproject1:password@aws-0-test.pooler.supabase.com:5432/postgres'
+
+    expect(() => validateEnvironment(environment)).not.toThrow()
+    expect(getE2EEnvironmentIdentity(environment)).toEqual({ supabaseProjectRef: 'e2eproject1' })
+  })
+
+  it('bloqueia E2E sem a configuração de segurança completa', () => {
+    const environment = createValidEnvironment()
+    environment.DARCY_E2E_GUARD = 'enabled'
+
+    expect(() => validateEnvironment(environment)).toThrow('DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF')
+  })
+
+  it('bloqueia o projeto Alpha mesmo quando ele é informado como esperado', () => {
+    const environment = createValidEnvironment()
+    environment.DARCY_E2E_GUARD = 'enabled'
+    environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'alphaproject1'
+    environment.DARCY_ALPHA_SUPABASE_PROJECT_REF = 'alphaproject1'
+    environment.SUPABASE_URL = 'https://alphaproject1.supabase.co'
+    environment.DATABASE_URL = 'postgresql://postgres:password@db.alphaproject1.supabase.co:5432/postgres'
+    environment.DIRECT_URL = 'postgresql://postgres:password@db.alphaproject1.supabase.co:5432/postgres'
+
+    expect(() => validateEnvironment(environment)).toThrow('projeto Alpha reservado')
+  })
+
+  it('bloqueia divergência entre Auth e banco', () => {
+    const environment = createValidEnvironment()
+    environment.DARCY_E2E_GUARD = 'enabled'
+    environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'e2eproject1'
+    environment.DARCY_ALPHA_SUPABASE_PROJECT_REF = 'alphaproject1'
+    environment.SUPABASE_URL = 'https://e2eproject1.supabase.co'
+    environment.DATABASE_URL = 'postgresql://postgres:password@db.otherproject1.supabase.co:5432/postgres'
+    environment.DIRECT_URL = 'postgresql://postgres:password@db.e2eproject1.supabase.co:5432/postgres'
+
+    expect(() => validateEnvironment(environment)).toThrow('projetos Supabase distintos')
+  })
+
+  it('bloqueia backend conectado a projeto diferente do esperado', () => {
+    const environment = createValidEnvironment()
+    environment.DARCY_E2E_GUARD = 'enabled'
+    environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'e2eproject1'
+    environment.DARCY_ALPHA_SUPABASE_PROJECT_REF = 'alphaproject1'
+    environment.SUPABASE_URL = 'https://otherproject1.supabase.co'
+    environment.DATABASE_URL = 'postgresql://postgres:password@db.otherproject1.supabase.co:5432/postgres'
+    environment.DIRECT_URL = 'postgresql://postgres:password@db.otherproject1.supabase.co:5432/postgres'
+
+    expect(() => validateEnvironment(environment)).toThrow('não corresponde ao esperado')
+  })
+
+  it('bloqueia conexão direta ausente ou divergente antes de uma migration', () => {
+    const environment = createValidEnvironment()
+    environment.DARCY_E2E_GUARD = 'enabled'
+    environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'e2eproject1'
+    environment.DARCY_ALPHA_SUPABASE_PROJECT_REF = 'alphaproject1'
+    environment.SUPABASE_URL = 'https://e2eproject1.supabase.co'
+    environment.DATABASE_URL = 'postgresql://postgres:password@db.e2eproject1.supabase.co:5432/postgres'
+    environment.DIRECT_URL = 'postgresql://postgres:password@db.otherproject1.supabase.co:5432/postgres'
+
+    expect(() => validateEnvironment(environment)).toThrow('conexão direta')
   })
 })

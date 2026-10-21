@@ -32,6 +32,13 @@ const ArtefatosIASchema = z.object({
   opcoes_dinamicas: z.record(ArtefatoOpcoesDinamicasSchema).optional(),
 }).strict()
 
+const DecisaoAutoralSchema = z.object({
+  id: z.literal('contexto_problema_central'),
+  escolha: z.string().min(1).max(1000),
+  justificativa: z.string().min(1).max(2000),
+  atualizada_em: z.string().datetime(),
+}).strict()
+
 export const ResumoAcademicoStateSchema = z.object({
   titulo_provisorio: z.string(),
   tema: z.string(),
@@ -47,6 +54,8 @@ export const ResumoAcademicoStateSchema = z.object({
   // do marcador explícito de conclusão da identificação inicial.
   identificacao_inicial_concluida: z.boolean().optional(),
   artefatos_ia: ArtefatosIASchema.optional(),
+  // Opcional para leitura de progressos persistidos antes do registro autoral.
+  decisoes_autorais: z.array(DecisaoAutoralSchema).max(1).optional(),
   contexto: EtapaResumoSchema,
   objetivo: EtapaResumoSchema,
   metodologia: EtapaResumoSchema,

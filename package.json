@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev:e2e": "DARCY_ENV_FILE=.env.e2e.local ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "vitest run --config vitest.config.ts",
@@ -14,7 +15,10 @@
     "test:typecheck": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
-    "prisma:validate": "prisma validate"
+    "prisma:validate": "prisma validate",
+    "prisma:e2e:validate": "npm run build && node scripts/run-prisma-e2e.cjs validate",
+    "prisma:e2e:migrate:status": "npm run build && node scripts/run-prisma-e2e.cjs migrate status",
+    "prisma:e2e:migrate:deploy": "npm run build && node scripts/run-prisma-e2e.cjs migrate deploy"
   },
   "engines": {
     "node": ">=24.21.0 <25"

@@ -35,6 +35,8 @@ export type ProjectType =
  * O controller valida e repassa ao AIService.
  */
 export interface ProjectContext {
+  /** Identificador do Project, validado contra o usuário autenticado pelo controller. */
+  projectId?: string
   /** Título do projeto de pesquisa */
   projectTitle: string
   /** Tipo de trabalho acadêmico */
@@ -47,6 +49,8 @@ export interface ProjectContext {
   researchField?: string
   /** Histórico de mensagens da conversa atual */
   conversationHistory?: ConversationMessage[]
+  /** Preenchido exclusivamente pelo backend a partir do progresso do projeto autenticado. */
+  decisaoAutoralContextual?: string
 }
 
 /**

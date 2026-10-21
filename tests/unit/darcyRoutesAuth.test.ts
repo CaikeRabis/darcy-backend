@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net'
 const authGetUser = vi.hoisted(() => vi.fn())
 const generateDarcyResponse = vi.hoisted(() => vi.fn())
 const executeQuickAction = vi.hoisted(() => vi.fn())
+const getOwnedResumoAutoralDecisionContext = vi.hoisted(() => vi.fn())
 
 vi.mock('../../src/lib/supabase', () => ({
   getSupabaseClient: () => ({
@@ -24,6 +25,10 @@ vi.mock('../../src/services/ai/AIService', () => ({
       executeQuickAction,
     }),
   },
+}))
+
+vi.mock('../../src/services/ResumoAcademicoService', () => ({
+  getOwnedResumoAutoralDecisionContext,
 }))
 
 import app from '../../src/app'
@@ -92,6 +97,7 @@ describe('rotas de IA protegidas', () => {
     authGetUser.mockReset()
     generateDarcyResponse.mockReset()
     executeQuickAction.mockReset()
+    getOwnedResumoAutoralDecisionContext.mockReset()
   })
 
   beforeAll(async () => {
@@ -144,6 +150,48 @@ describe('rotas de IA protegidas', () => {
     })
     expect(authGetUser).toHaveBeenCalledWith('token-fake-de-teste')
     expect(generateDarcyResponse).toHaveBeenCalledWith(chatBody.context, chatBody.userMessage)
+  })
+
+  it('recupera decisão somente pelo Project pertencente ao usuário autenticado', async () => {
+    authGetUser.mockResolvedValue({
+      data: { user: { id: '00000000-0000-4000-8000-000000000001' } },
+      error: null,
+    })
+    getOwnedResumoAutoralDecisionContext.mockResolvedValue(
+      'Problema central escolhido pelo pesquisador: baixa adesão.',
+    )
+    generateDarcyResponse.mockResolvedValue({ ok: true, data: { mensagem: 'Resposta contextual.' } })
+
+    const result = await postRequest('/api/darcy/chat', {
+      ...chatBody,
+      context: { ...chatBody.context, projectId: 'project-do-usuario' },
+    }, 'Bearer token-fake-de-teste')
+
+    expect(result.status).toBe(200)
+    expect(getOwnedResumoAutoralDecisionContext).toHaveBeenCalledWith(
+      'project-do-usuario',
+      '00000000-0000-4000-8000-000000000001',
+    )
+    expect(generateDarcyResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ decisaoAutoralContextual: 'Problema central escolhido pelo pesquisador: baixa adesão.' }),
+      chatBody.userMessage,
+    )
+  })
+
+  it('não encaminha decisão quando o Project não pertence ao usuário autenticado', async () => {
+    authGetUser.mockResolvedValue({
+      data: { user: { id: '00000000-0000-4000-8000-000000000001' } },
+      error: null,
+    })
+    getOwnedResumoAutoralDecisionContext.mockResolvedValue(undefined)
+
+    const result = await postRequest('/api/darcy/chat', {
+      ...chatBody,
+      context: { ...chatBody.context, projectId: 'project-de-outro-usuario' },
+    }, 'Bearer token-fake-de-teste')
+
+    expect(result.status).toBe(404)
+    expect(generateDarcyResponse).not.toHaveBeenCalled()
   })
 
   it('aceita Bearer validado e encaminha quick action ao controller de IA', async () => {
