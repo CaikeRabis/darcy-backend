@@ -91,6 +91,16 @@ export class OpenAIProvider implements AIProvider {
   }
 
   async generate(request: AIGenerationRequest): Promise<string> {
+    const result = await this.generateWithUsage(request)
+    return result.outputText
+  }
+
+  /** Metadados internos para o runner experimental; não altera o contrato AIProvider. */
+  async generateWithUsage(request: AIGenerationRequest): Promise<{
+    outputText: string
+    inputTokens: number | null
+    outputTokens: number | null
+  }> {
     try {
       const input: ResponseInput = [
         ...request.history.map((message) => ({
@@ -126,7 +136,11 @@ export class OpenAIProvider implements AIProvider {
         throw new AIProviderError(refused ? 'CONTENT_BLOCKED' : 'PROVIDER_ERROR', this.name)
       }
 
-      return response.output_text
+      return {
+        outputText: response.output_text,
+        inputTokens: response.usage?.input_tokens ?? null,
+        outputTokens: response.usage?.output_tokens ?? null,
+      }
     } catch (error) {
       throw this.normalizeError(error)
     }

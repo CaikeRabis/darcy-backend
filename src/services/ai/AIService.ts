@@ -22,6 +22,7 @@ import type {
 import {
   AIProviderError,
   type AIErrorCode,
+  type AIGenerationRequest,
   type AIMessage,
 } from './contracts'
 import type { AIProvider } from './provider'
@@ -162,6 +163,23 @@ function buildConversationHistory(
   return history
 }
 
+/**
+ * Monta o pedido de chat usado pelo produto e pelo experimento D3.
+ * A extração impede uma segunda implementação independente do prompt.
+ */
+export function createDarcyChatGenerationRequest(
+  context: ProjectContext,
+  userMessage: string,
+): AIGenerationRequest {
+  return {
+    systemInstruction: buildSystemInstruction(context),
+    prompt: userMessage,
+    history: buildConversationHistory(context, userMessage),
+    mode: 'chat',
+    options: DEFAULT_GENERATION_OPTIONS,
+  }
+}
+
 function buildQuickActionPrompt(actionId: QuickActionId, context: ProjectContext): string {
   const baseCtx = context.activeSectionContent
     ? `Analise o seguinte trecho do trabalho:\n\n"${context.activeSectionContent}"\n\n`
@@ -213,13 +231,9 @@ export class AIService {
     userMessage: string,
   ): Promise<ApiResponse<DarcyResponse>> {
     try {
-      const rawText = await this.provider.generate({
-        systemInstruction: buildSystemInstruction(context),
-        prompt: userMessage,
-        history: buildConversationHistory(context, userMessage),
-        mode: 'chat',
-        options: DEFAULT_GENERATION_OPTIONS,
-      })
+      const rawText = await this.provider.generate(
+        createDarcyChatGenerationRequest(context, userMessage),
+      )
 
       this.logProviderSuccess()
       return { ok: true, data: this.parseProviderResponse(rawText) }

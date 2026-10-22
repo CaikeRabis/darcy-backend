@@ -12,6 +12,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:ai:real": "vitest run --config vitest.real.config.ts",
+    "experiment:cnpq:dry-run": "ts-node scripts/run-cnpq-evaluation.ts",
     "test:typecheck": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
