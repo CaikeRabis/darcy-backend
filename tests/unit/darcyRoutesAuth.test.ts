@@ -6,6 +6,10 @@ import {
   type Server,
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import {
+  getScenarioOwnedContext,
+  SCIENTIFIC_SCENARIOS,
+} from '../fixtures/cnpqScientificScenarios'
 
 const authGetUser = vi.hoisted(() => vi.fn())
 const generateDarcyResponse = vi.hoisted(() => vi.fn())
@@ -193,6 +197,43 @@ describe('rotas de IA protegidas', () => {
     )
   })
 
+  it.each(SCIENTIFIC_SCENARIOS)(
+    'encaminha no chat somente o contexto persistido do cenário $id',
+    async (scenario) => {
+      authGetUser.mockResolvedValue({
+        data: { user: { id: '00000000-0000-4000-8000-000000000001' } },
+        error: null,
+      })
+      const ownedContext = getScenarioOwnedContext(scenario)
+      getOwnedResumoScientificContext.mockResolvedValue(ownedContext)
+      generateDarcyResponse.mockResolvedValue({ ok: true, data: { mensagem: 'Resposta contextual.' } })
+
+      const result = await postRequest('/api/darcy/chat', {
+        ...chatBody,
+        userMessage: scenario.instrucao,
+        context: {
+          ...chatBody.context,
+          projectId: `project-${scenario.id}`,
+          researchField: 'Campo livre não confiável',
+          classificacaoCnpqContextual: {
+            versaoCatalogo: 'cliente-invalido',
+          },
+        },
+      }, 'Bearer token-fake-de-teste')
+
+      expect(result.status).toBe(200)
+      expect(getOwnedResumoScientificContext).toHaveBeenCalledWith(
+        `project-${scenario.id}`,
+        '00000000-0000-4000-8000-000000000001',
+      )
+      expect(generateDarcyResponse).toHaveBeenCalledWith(expect.anything(), scenario.instrucao)
+      const [contextToAi] = generateDarcyResponse.mock.calls[0]
+      expect(contextToAi.researchField).toBeUndefined()
+      expect(contextToAi.classificacaoCnpqContextual).toEqual(ownedContext.classificacaoCnpqContextual ?? undefined)
+      expect(contextToAi.decisaoAutoralContextual).toBe(ownedContext.decisaoAutoralContextual ?? undefined)
+    },
+  )
+
   it('não encaminha decisão quando o Project não pertence ao usuário autenticado', async () => {
     authGetUser.mockResolvedValue({
       data: { user: { id: '00000000-0000-4000-8000-000000000001' } },
@@ -274,4 +315,41 @@ describe('rotas de IA protegidas', () => {
     const contextualizedContext = executeQuickAction.mock.calls[0][1]
     expect(contextualizedContext.researchField).toBeUndefined()
   })
+
+  it.each([
+    'validar-coerencia',
+    'sugerir-referencias',
+    'checar-objetivos',
+    'revisar-clareza',
+    'identificar-lacunas',
+  ] as const)(
+    'encaminha a quick action %s com classificação autenticada',
+    async (actionId) => {
+      authGetUser.mockResolvedValue({
+        data: { user: { id: '00000000-0000-4000-8000-000000000001' } },
+        error: null,
+      })
+      const scenario = SCIENTIFIC_SCENARIOS.find((item) => item.id === 'interdisciplinar-mobilidade-urbana')
+      if (!scenario) throw new Error('Fixture de mobilidade urbana ausente.')
+      const ownedContext = getScenarioOwnedContext(scenario)
+      getOwnedResumoScientificContext.mockResolvedValue(ownedContext)
+      executeQuickAction.mockResolvedValue({ ok: true, data: { mensagem: 'Ação contextual.' } })
+
+      const result = await postRequest('/api/darcy/quick-action', {
+        actionId,
+        context: {
+          ...quickActionBody.context,
+          projectId: 'project-mobilidade',
+          researchField: 'Campo livre não confiável',
+        },
+      }, 'Bearer token-fake-de-teste')
+
+      expect(result.status).toBe(200)
+      expect(executeQuickAction).toHaveBeenCalledWith(actionId, expect.objectContaining({
+        classificacaoCnpqContextual: ownedContext.classificacaoCnpqContextual,
+      }))
+      const [, contextToAi] = executeQuickAction.mock.calls[0]
+      expect(contextToAi.researchField).toBeUndefined()
+    },
+  )
 })
