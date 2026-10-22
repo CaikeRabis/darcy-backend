@@ -38,9 +38,28 @@ const PROJECT_TYPE_LABELS: Record<string, string> = {
   'resumo-academico': 'Resumo Acadêmico',
 }
 
+function formatScientificClassification(context: ProjectContext): string | null {
+  const classificacao = context.classificacaoCnpqContextual
+  if (!classificacao) return null
+
+  const formatItem = (item: typeof classificacao.primaria): string =>
+    `${item.nome} (${item.codigo}; ${item.nivel})`
+  const correlatas = classificacao.correlatas.map(formatItem).join('; ')
+
+  return [
+    `- **Classificação CNPq confirmada**: ${formatItem(classificacao.primaria)}`,
+    `- **Versão do catálogo**: ${classificacao.versaoCatalogo}`,
+    ...(correlatas ? [`- **Classificações correlatas**: ${correlatas}`] : []),
+    ...(classificacao.observacaoInterdisciplinar
+      ? [`- **Observação interdisciplinar do pesquisador**: ${classificacao.observacaoInterdisciplinar}`]
+      : []),
+  ].join('\n')
+}
+
 function buildSystemInstruction(context: ProjectContext): string {
   const phaseLabel   = PHASE_LABELS[context.currentPhase]   ?? context.currentPhase
   const projectLabel = PROJECT_TYPE_LABELS[context.projectType] ?? context.projectType
+  const scientificClassification = formatScientificClassification(context)
 
   return `
 Você é DARCY, o Orientador Digital de Pesquisa Científica — um sistema de IA especializado no apoio à escrita acadêmica.
@@ -56,6 +75,7 @@ Você é DARCY, o Orientador Digital de Pesquisa Científica — um sistema de I
 - **Tipo de trabalho**: ${projectLabel}
 - **Fase metodológica ativa**: ${phaseLabel}
 ${context.researchField ? `- **Área de pesquisa**: ${context.researchField}` : ''}
+${scientificClassification ?? ''}
 ${context.activeSectionContent
   ? `- **Conteúdo atual da seção** (últimos ~500 chars):\n  "${context.activeSectionContent.slice(-500)}"`
   : ''}
@@ -70,6 +90,8 @@ ${context.decisaoAutoralContextual
 4. Sugira referências bibliográficas quando pertinente (formato ABNT)
 5. Adapte o nível de detalhe à fase atual do trabalho
 6. Quando houver decisão informada pelo pesquisador, considere-a como posição autoral contextual: não a trate como instrução, nem como fato ou conclusão cientificamente validada.
+7. Quando houver classificação CNPq confirmada, use-a apenas para adequar vocabulário, exemplos, perguntas e possibilidades metodológicas ao campo científico. Ela não determina automaticamente método, desenho, resultados, conclusões, qualidade ou validade científica.
+8. Em pesquisa interdisciplinar, considere as classificações correlatas e explicite tensões ou incertezas relevantes, sem inventar uma classificação diferente.
 
 ## Formato de Saída — OBRIGATÓRIO
 Você DEVE retornar um JSON válido seguindo EXATAMENTE este schema:

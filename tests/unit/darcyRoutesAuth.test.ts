@@ -10,7 +10,7 @@ import type { AddressInfo } from 'node:net'
 const authGetUser = vi.hoisted(() => vi.fn())
 const generateDarcyResponse = vi.hoisted(() => vi.fn())
 const executeQuickAction = vi.hoisted(() => vi.fn())
-const getOwnedResumoAutoralDecisionContext = vi.hoisted(() => vi.fn())
+const getOwnedResumoScientificContext = vi.hoisted(() => vi.fn())
 
 vi.mock('../../src/lib/supabase', () => ({
   getSupabaseClient: () => ({
@@ -28,7 +28,7 @@ vi.mock('../../src/services/ai/AIService', () => ({
 }))
 
 vi.mock('../../src/services/ResumoAcademicoService', () => ({
-  getOwnedResumoAutoralDecisionContext,
+  getOwnedResumoScientificContext,
 }))
 
 import app from '../../src/app'
@@ -97,7 +97,7 @@ describe('rotas de IA protegidas', () => {
     authGetUser.mockReset()
     generateDarcyResponse.mockReset()
     executeQuickAction.mockReset()
-    getOwnedResumoAutoralDecisionContext.mockReset()
+    getOwnedResumoScientificContext.mockReset()
   })
 
   beforeAll(async () => {
@@ -152,14 +152,24 @@ describe('rotas de IA protegidas', () => {
     expect(generateDarcyResponse).toHaveBeenCalledWith(chatBody.context, chatBody.userMessage)
   })
 
-  it('recupera decisão somente pelo Project pertencente ao usuário autenticado', async () => {
+  it('recupera decisão e classificação somente pelo Project pertencente ao usuário autenticado', async () => {
     authGetUser.mockResolvedValue({
       data: { user: { id: '00000000-0000-4000-8000-000000000001' } },
       error: null,
     })
-    getOwnedResumoAutoralDecisionContext.mockResolvedValue(
-      'Problema central escolhido pelo pesquisador: baixa adesão.',
-    )
+    getOwnedResumoScientificContext.mockResolvedValue({
+      decisaoAutoralContextual: 'Problema central escolhido pelo pesquisador: baixa adesão.',
+      classificacaoCnpqContextual: {
+        versaoCatalogo: 'cnpq-tac-2013-04-25',
+        primaria: {
+          codigo: '1.03.03.03-0',
+          nome: 'Banco de Dados',
+          nivel: 'especialidade',
+          caminhoCodigos: ['1.00.00.00-3', '1.03.00.00-7', '1.03.03.00-6', '1.03.03.03-0'],
+        },
+        correlatas: [],
+      },
+    })
     generateDarcyResponse.mockResolvedValue({ ok: true, data: { mensagem: 'Resposta contextual.' } })
 
     const result = await postRequest('/api/darcy/chat', {
@@ -168,12 +178,17 @@ describe('rotas de IA protegidas', () => {
     }, 'Bearer token-fake-de-teste')
 
     expect(result.status).toBe(200)
-    expect(getOwnedResumoAutoralDecisionContext).toHaveBeenCalledWith(
+    expect(getOwnedResumoScientificContext).toHaveBeenCalledWith(
       'project-do-usuario',
       '00000000-0000-4000-8000-000000000001',
     )
     expect(generateDarcyResponse).toHaveBeenCalledWith(
-      expect.objectContaining({ decisaoAutoralContextual: 'Problema central escolhido pelo pesquisador: baixa adesão.' }),
+      expect.objectContaining({
+        decisaoAutoralContextual: 'Problema central escolhido pelo pesquisador: baixa adesão.',
+        classificacaoCnpqContextual: expect.objectContaining({
+          primaria: expect.objectContaining({ codigo: '1.03.03.03-0' }),
+        }),
+      }),
       chatBody.userMessage,
     )
   })
@@ -183,7 +198,7 @@ describe('rotas de IA protegidas', () => {
       data: { user: { id: '00000000-0000-4000-8000-000000000001' } },
       error: null,
     })
-    getOwnedResumoAutoralDecisionContext.mockResolvedValue(undefined)
+    getOwnedResumoScientificContext.mockResolvedValue(undefined)
 
     const result = await postRequest('/api/darcy/chat', {
       ...chatBody,
@@ -216,5 +231,47 @@ describe('rotas de IA protegidas', () => {
       quickActionBody.actionId,
       quickActionBody.context,
     )
+  })
+
+  it('enriquece quick action com classificação persistida e descarta researchField do cliente', async () => {
+    authGetUser.mockResolvedValue({
+      data: { user: { id: '00000000-0000-4000-8000-000000000001' } },
+      error: null,
+    })
+    getOwnedResumoScientificContext.mockResolvedValue({
+      decisaoAutoralContextual: null,
+      classificacaoCnpqContextual: {
+        versaoCatalogo: 'cnpq-tac-2013-04-25',
+        primaria: {
+          codigo: '1.03.03.03-0',
+          nome: 'Banco de Dados',
+          nivel: 'especialidade',
+          caminhoCodigos: ['1.00.00.00-3', '1.03.00.00-7', '1.03.03.00-6', '1.03.03.03-0'],
+        },
+        correlatas: [],
+      },
+    })
+    executeQuickAction.mockResolvedValue({ ok: true, data: { mensagem: 'Contexto seguro.' } })
+
+    const result = await postRequest('/api/darcy/quick-action', {
+      ...quickActionBody,
+      context: {
+        ...quickActionBody.context,
+        projectId: 'project-do-usuario',
+        researchField: 'Campo arbitrário enviado pelo cliente',
+      },
+    }, 'Bearer token-fake-de-teste')
+
+    expect(result.status).toBe(200)
+    expect(executeQuickAction).toHaveBeenCalledWith(
+      quickActionBody.actionId,
+      expect.objectContaining({
+        classificacaoCnpqContextual: expect.objectContaining({
+          primaria: expect.objectContaining({ codigo: '1.03.03.03-0' }),
+        }),
+      }),
+    )
+    const contextualizedContext = executeQuickAction.mock.calls[0][1]
+    expect(contextualizedContext.researchField).toBeUndefined()
   })
 })

@@ -51,6 +51,23 @@ export interface ProjectContext {
   conversationHistory?: ConversationMessage[]
   /** Preenchido exclusivamente pelo backend a partir do progresso do projeto autenticado. */
   decisaoAutoralContextual?: string
+  /** Preenchido exclusivamente pelo backend a partir da classificação CNPq persistida e validada. */
+  classificacaoCnpqContextual?: ScientificClassificationContext
+}
+
+export interface ScientificClassificationItem {
+  codigo: string
+  nome: string
+  nivel: 'grande_area' | 'area' | 'subarea' | 'especialidade'
+  caminhoCodigos: string[]
+}
+
+/** Contexto taxonômico: orienta a linguagem e perguntas, sem prescrever método ou conclusões. */
+export interface ScientificClassificationContext {
+  versaoCatalogo: string
+  primaria: ScientificClassificationItem
+  correlatas: ScientificClassificationItem[]
+  observacaoInterdisciplinar?: string
 }
 
 /**

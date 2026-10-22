@@ -14,7 +14,8 @@ import { z } from 'zod'
 import { verifyDatabaseReadiness } from '../lib/readiness'
 import { getE2EEnvironmentIdentity } from '../config/e2eEnvironment'
 import { AIService } from '../services/ai/AIService'
-import { getOwnedResumoAutoralDecisionContext } from '../services/ResumoAcademicoService'
+import { getOwnedResumoScientificContext } from '../services/ResumoAcademicoService'
+import type { ProjectContext } from '../types/darcy.types'
 
 /* ------------------------------------------------------------------ */
 /* Schemas de validação (Zod)                                          */
@@ -69,6 +70,31 @@ const QuickActionRequestSchema = z.object({
 export class DarcyController {
 
   /**
+   * Para projetos, o contexto científico vem apenas do JSONB pertencente ao
+   * usuário autenticado. O campo livre recebido do cliente não é autoridade.
+   */
+  private static async getAuthenticatedProjectContext(
+    context: ProjectContext,
+    profileId: string,
+  ): Promise<ProjectContext | undefined> {
+    if (!context.projectId) return context
+
+    const scientificContext = await getOwnedResumoScientificContext(context.projectId, profileId)
+    if (!scientificContext) return undefined
+
+    const { researchField: _untrustedResearchField, ...trustedContext } = context
+    return {
+      ...trustedContext,
+      ...(scientificContext.decisaoAutoralContextual
+        ? { decisaoAutoralContextual: scientificContext.decisaoAutoralContextual }
+        : {}),
+      ...(scientificContext.classificacaoCnpqContextual
+        ? { classificacaoCnpqContextual: scientificContext.classificacaoCnpqContextual }
+        : {}),
+    }
+  }
+
+  /**
    * POST /api/darcy/chat
    * Processa uma mensagem do pesquisador e retorna a resposta do DARCY.
    */
@@ -89,18 +115,12 @@ export class DarcyController {
     }
 
     const { userMessage, context } = parseResult.data
-    let contextualizedContext = context
+    let contextualizedContext: ProjectContext | undefined
 
-    // A decisão não é aceita do cliente: quando há Project, ela é recuperada
-    // exclusivamente pelo backend sob o profile autenticado.
     if (context.projectId) {
       try {
-        const decisao = await getOwnedResumoAutoralDecisionContext(
-          context.projectId,
-          req.authUser!.id,
-        )
-
-        if (decisao === undefined) {
+        contextualizedContext = await DarcyController.getAuthenticatedProjectContext(context, req.authUser!.id)
+        if (!contextualizedContext) {
           res.status(404).json({
             ok: false,
             error: {
@@ -111,10 +131,6 @@ export class DarcyController {
           return
         }
 
-        contextualizedContext = {
-          ...context,
-          ...(decisao ? { decisaoAutoralContextual: decisao } : {}),
-        }
       } catch {
         res.status(500).json({
           ok: false,
@@ -125,6 +141,8 @@ export class DarcyController {
         })
         return
       }
+    } else {
+      contextualizedContext = context
     }
 
     // 2. Delega ao serviço
@@ -160,9 +178,37 @@ export class DarcyController {
     }
 
     const { actionId, context } = parseResult.data
+    let contextualizedContext: ProjectContext | undefined
+
+    if (context.projectId) {
+      try {
+        contextualizedContext = await DarcyController.getAuthenticatedProjectContext(context, req.authUser!.id)
+        if (!contextualizedContext) {
+          res.status(404).json({
+            ok: false,
+            error: {
+              code: 'PROJECT_NOT_FOUND',
+              message: 'Projeto não encontrado.',
+            },
+          })
+          return
+        }
+      } catch {
+        res.status(500).json({
+          ok: false,
+          error: {
+            code: 'PROJECT_CONTEXT_UNAVAILABLE',
+            message: 'Não foi possível recuperar o contexto do projeto.',
+          },
+        })
+        return
+      }
+    } else {
+      contextualizedContext = context
+    }
 
     const service = AIService.getInstance()
-    const result = await service.executeQuickAction(actionId, context)
+    const result = await service.executeQuickAction(actionId, contextualizedContext)
 
     if (!result.ok) {
       res.status(502).json(result)

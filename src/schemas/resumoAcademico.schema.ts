@@ -1,4 +1,8 @@
 import { z } from 'zod'
+import {
+  CNPQ_CATALOG_VERSION,
+  resolveCnpqCatalogEntry,
+} from '../services/cnpqTaxonomy'
 
 const StatusEtapaSchema = z.enum(['pendente', 'em_revisao', 'aprovado'])
 
@@ -32,17 +36,73 @@ const ArtefatosIASchema = z.object({
   opcoes_dinamicas: z.record(ArtefatoOpcoesDinamicasSchema).optional(),
 }).strict()
 
-const DecisaoAutoralSchema = z.object({
+export const DecisaoAutoralSchema = z.object({
   id: z.literal('contexto_problema_central'),
   escolha: z.string().min(1).max(1000),
   justificativa: z.string().min(1).max(2000),
   atualizada_em: z.string().datetime(),
 }).strict()
 
+const CnpqLevelSchema = z.enum(['grande_area', 'area', 'subarea', 'especialidade'])
+
+const CnpqCatalogEntrySchema = z.object({
+  codigo: z.string().min(1),
+  nivel: CnpqLevelSchema,
+  nome: z.string().min(1),
+  caminho_codigos: z.array(z.string().min(1)).min(1),
+}).strict()
+
+function isCanonicalCnpqEntry(entry: z.infer<typeof CnpqCatalogEntrySchema>): boolean {
+  const resolved = resolveCnpqCatalogEntry(entry.codigo)
+
+  return resolved !== null &&
+    resolved.nivel === entry.nivel &&
+    resolved.nome === entry.nome &&
+    resolved.caminho_codigos.length === entry.caminho_codigos.length &&
+    resolved.caminho_codigos.every((codigo, index) => codigo === entry.caminho_codigos[index])
+}
+
+export const ClassificacaoCnpqSchema = z.object({
+  versao_catalogo: z.literal(CNPQ_CATALOG_VERSION),
+  primaria: CnpqCatalogEntrySchema,
+  correlatas: z.array(CnpqCatalogEntrySchema).max(8).optional(),
+  observacao_interdisciplinar: z.string().trim().min(1).max(1000).optional(),
+}).strict().superRefine((classificacao, context) => {
+  if (!isCanonicalCnpqEntry(classificacao.primaria)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['primaria'],
+      message: 'A classificação CNPq principal não corresponde ao catálogo oficial versionado.',
+    })
+  }
+
+  const codigos = new Set([classificacao.primaria.codigo])
+  classificacao.correlatas?.forEach((correlata, index) => {
+    if (!isCanonicalCnpqEntry(correlata)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['correlatas', index],
+        message: 'A classificação CNPq correlata não corresponde ao catálogo oficial versionado.',
+      })
+    }
+    if (codigos.has(correlata.codigo)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['correlatas', index, 'codigo'],
+        message: 'Uma classificação CNPq não pode ser repetida.',
+      })
+    }
+    codigos.add(correlata.codigo)
+  })
+})
+
 export const ResumoAcademicoStateSchema = z.object({
   titulo_provisorio: z.string(),
   tema: z.string(),
-  area_conhecimento: z.string(),
+  // Default preserva a leitura de JSONBs anteriores que não tinham esse campo.
+  area_conhecimento: z.string().default(''),
+  // Opcional para que JSONBs criados antes da classificação estruturada continuem legíveis.
+  classificacao_cnpq: ClassificacaoCnpqSchema.optional(),
   nivel_academico: z.string(),
   estagio_pesquisa: z.enum([
     'nao_iniciado',
