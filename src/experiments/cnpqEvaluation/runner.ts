@@ -17,6 +17,10 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AIGenerationRequest } from '../../services/ai/contracts'
 import { createDarcyChatGenerationRequest } from '../../services/ai/AIService'
+import {
+  validateExperimentDarcyResponse,
+  type ExperimentResponseValidationFailure,
+} from '../../services/ai/darcyResponseValidation'
 import { OpenAIProvider } from '../../services/ai/providers/openai.provider'
 import { getScenarioOwnedContext, SCIENTIFIC_SCENARIOS, type ScientificScenario } from './scenarios'
 
@@ -33,7 +37,7 @@ const OUTPUT_USD_PER_TOKEN = 1.20 / 1_000_000
 const MAX_OUTPUT_TOKENS = 2048
 
 export type ExperimentCondition = 'A' | 'B'
-export type ExperimentStatus = 'dry_run' | 'completed' | 'budget_blocked' | 'uncertain_charge' | 'missing_usage' | 'duplicate_skipped'
+export type ExperimentStatus = 'dry_run' | 'completed' | 'budget_blocked' | 'uncertain_charge' | 'missing_usage' | 'invalid_response' | 'duplicate_skipped'
 
 export interface ExperimentSpec {
   id: string
@@ -49,7 +53,11 @@ export interface ExperimentUsage {
 }
 
 export interface ExperimentTransport {
-  generate(request: AIGenerationRequest): Promise<{ outputText: string; usage: ExperimentUsage }>
+  generate(request: AIGenerationRequest): Promise<{
+    outputText: string | null
+    usage: ExperimentUsage
+    completion: 'completed' | 'incomplete' | 'refused'
+  }>
 }
 
 export interface ExperimentRecord {
@@ -62,6 +70,7 @@ export interface ExperimentRecord {
   chargedUsd: number
   model: 'gpt-5.6-luna'
   outputText?: string
+  validationFailure?: 'incomplete_response' | 'model_refusal' | ExperimentResponseValidationFailure
 }
 
 export interface ExperimentRunOptions {
@@ -82,7 +91,8 @@ export interface ExperimentArtifactOptions {
 
 export interface ExperimentManifest {
   experiment: 'D3-CNPQ'
-  protocolVersion: 'D3-B3-R1'
+  /** Persiste versões anteriores para que retomadas incompatíveis possam ser recusadas. */
+  protocolVersion: string
   plan: 'full' | 'pilot-6'
   confirmationRequired: string
   plannedResponses: number
@@ -90,7 +100,17 @@ export interface ExperimentManifest {
   repetitionsPerCondition: number
   provider: 'openai'
   model: string
-  generationParameters: { temperature: number; topP: number; topK: number; maxOutputTokens: number }
+  conceptualGenerationParameters: { temperature: number; topP: number; topK: number; maxOutputTokens: number }
+  effectiveGenerationParameters: {
+    temperature: number
+    maxOutputTokens: number
+    reasoningEffort: 'none'
+    store: false
+    responseFormat: 'json_schema'
+    responseSchemaStrict: false
+  }
+  declaredButNotAppliedParameters: { topP: number; topK: number }
+  runnerConfiguration: { reservationMaxOutputTokens: number }
   priceVersion: string
   budgetUsd: number
   estimatedReserveUsd: number
@@ -165,11 +185,23 @@ export class CnpqEvaluationRunner {
     if (!firstRequest) throw new Error('Plano experimental sem especificações.')
     const completedIds = options.resume
       ? getCompatibleCompletedIds(options.resume.manifest, options.resume.records, {
+        protocolVersion: 'D3-B3-R3',
         plan,
         provider: 'openai',
         model: 'gpt-5.6-luna',
         priceVersion: D3_PRICE_VERSION,
-        generationParameters: firstRequest.options,
+        effectiveGenerationParameters: {
+          temperature: firstRequest.options.temperature,
+          maxOutputTokens: firstRequest.options.maxOutputTokens,
+          reasoningEffort: 'none',
+          store: false,
+          responseFormat: 'json_schema',
+          responseSchemaStrict: false,
+        },
+        declaredButNotAppliedParameters: {
+          topP: firstRequest.options.topP,
+          topK: firstRequest.options.topK,
+        },
         confirmationRequired,
       })
       : new Set<string>()
@@ -196,6 +228,14 @@ export class CnpqEvaluationRunner {
         }
         const actualCost = estimateCost(result.usage.inputTokens, result.usage.outputTokens)
         chargedUsd += actualCost
+        const validationFailure = getResponseValidationFailure(result)
+        if (validationFailure || result.outputText === null) {
+          records.push({
+            ...toRecord(spec, 'invalid_response', reservedUsd, actualCost),
+            validationFailure: validationFailure ?? 'incomplete_response',
+          })
+          break
+        }
         records.push({ ...toRecord(spec, 'completed', reservedUsd, actualCost), outputText: result.outputText })
       } catch {
         chargedUsd += reservedUsd
@@ -211,13 +251,24 @@ function toRecord(spec: ExperimentSpec, status: ExperimentStatus, reservedUsd: n
   return { id: spec.id, scenarioId: spec.scenario.id, condition: spec.condition, repetition: spec.repetition, status, reservedUsd, chargedUsd, model: 'gpt-5.6-luna' }
 }
 
+function getResponseValidationFailure(result: Awaited<ReturnType<ExperimentTransport['generate']>>): ExperimentRecord['validationFailure'] | null {
+  if (result.completion === 'refused') return 'model_refusal'
+  if (result.completion !== 'completed' || result.outputText === null) return 'incomplete_response'
+  const validation = validateExperimentDarcyResponse(result.outputText)
+  return validation.ok ? null : validation.reason
+}
+
 /** Cria o transporte real somente quando o runner já passou pelo opt-in. */
 export function createOpenAIExperimentTransport(): ExperimentTransport {
   const provider = new OpenAIProvider()
   return {
     async generate(request) {
-      const result = await provider.generateWithUsage(request)
-      return { outputText: result.outputText, usage: { inputTokens: result.inputTokens, outputTokens: result.outputTokens } }
+      const result = await provider.generateForExperiment(request)
+      return {
+        outputText: result.outputText,
+        usage: { inputTokens: result.inputTokens, outputTokens: result.outputTokens },
+        completion: result.completion,
+      }
     },
   }
 }
@@ -233,7 +284,7 @@ export function createExperimentManifest(
     && records.every((record) => record.status === 'completed' || record.status === 'duplicate_skipped')
   return {
     experiment: 'D3-CNPQ',
-    protocolVersion: 'D3-B3-R1',
+    protocolVersion: 'D3-B3-R3',
     plan: options.plan,
     confirmationRequired: options.confirmationRequired,
     plannedResponses: specs.length,
@@ -241,7 +292,20 @@ export function createExperimentManifest(
     repetitionsPerCondition: options.plan === 'pilot-6' ? 1 : 3,
     provider: 'openai',
     model: 'gpt-5.6-luna',
-    generationParameters: firstRequest.options,
+    conceptualGenerationParameters: firstRequest.options,
+    effectiveGenerationParameters: {
+      temperature: firstRequest.options.temperature,
+      maxOutputTokens: firstRequest.options.maxOutputTokens,
+      reasoningEffort: 'none',
+      store: false,
+      responseFormat: 'json_schema',
+      responseSchemaStrict: false,
+    },
+    declaredButNotAppliedParameters: {
+      topP: firstRequest.options.topP,
+      topK: firstRequest.options.topK,
+    },
+    runnerConfiguration: { reservationMaxOutputTokens: MAX_OUTPUT_TOKENS },
     priceVersion: D3_PRICE_VERSION,
     budgetUsd: options.budgetUsd,
     estimatedReserveUsd: Number(records.reduce((total, record) => total + record.reservedUsd, 0).toFixed(7)),
@@ -254,20 +318,26 @@ export function createExperimentManifest(
 export function getCompatibleCompletedIds(
   manifest: ExperimentManifest,
   records: readonly ExperimentRecord[],
-  expected: Pick<ExperimentManifest, 'plan' | 'provider' | 'model' | 'priceVersion' | 'generationParameters' | 'confirmationRequired'>,
+  expected: Pick<ExperimentManifest, 'protocolVersion' | 'plan' | 'provider' | 'model' | 'priceVersion' | 'effectiveGenerationParameters' | 'declaredButNotAppliedParameters' | 'confirmationRequired'>,
 ): ReadonlySet<string> {
   if (manifest.mode !== 'execute') return new Set()
-  const sameGenerationParameters = manifest.generationParameters.temperature === expected.generationParameters.temperature
-    && manifest.generationParameters.topP === expected.generationParameters.topP
-    && manifest.generationParameters.topK === expected.generationParameters.topK
-    && manifest.generationParameters.maxOutputTokens === expected.generationParameters.maxOutputTokens
+  const sameEffectiveGenerationParameters = manifest.effectiveGenerationParameters.temperature === expected.effectiveGenerationParameters.temperature
+    && manifest.effectiveGenerationParameters.maxOutputTokens === expected.effectiveGenerationParameters.maxOutputTokens
+    && manifest.effectiveGenerationParameters.reasoningEffort === expected.effectiveGenerationParameters.reasoningEffort
+    && manifest.effectiveGenerationParameters.store === expected.effectiveGenerationParameters.store
+    && manifest.effectiveGenerationParameters.responseFormat === expected.effectiveGenerationParameters.responseFormat
+    && manifest.effectiveGenerationParameters.responseSchemaStrict === expected.effectiveGenerationParameters.responseSchemaStrict
+  const sameDeclaredButNotAppliedParameters = manifest.declaredButNotAppliedParameters.topP === expected.declaredButNotAppliedParameters.topP
+    && manifest.declaredButNotAppliedParameters.topK === expected.declaredButNotAppliedParameters.topK
   if (
-    manifest.plan !== expected.plan
+    manifest.protocolVersion !== expected.protocolVersion
+    || manifest.plan !== expected.plan
     || manifest.provider !== expected.provider
     || manifest.model !== expected.model
     || manifest.priceVersion !== expected.priceVersion
     || manifest.confirmationRequired !== expected.confirmationRequired
-    || !sameGenerationParameters
+    || !sameEffectiveGenerationParameters
+    || !sameDeclaredButNotAppliedParameters
   ) return new Set()
   return new Set(records.filter((record) => record.status === 'completed').map((record) => record.id))
 }

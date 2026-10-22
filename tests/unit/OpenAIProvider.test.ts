@@ -78,9 +78,49 @@ describe('OpenAIProvider com SDK mockado', () => {
         format: expect.objectContaining({
           type: 'json_schema',
           name: 'darcy_response',
+          strict: false,
         }),
       },
     }))
+    const providerRequest = openAIState.create.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(providerRequest).not.toHaveProperty('top_p')
+    expect(providerRequest).not.toHaveProperty('top_k')
+  })
+
+  it('expõe conclusão e usage ao runner sem alterar generate()', async () => {
+    openAIState.create.mockResolvedValue({
+      status: 'completed', output_text: '{"mensagem":"ok"}', output: [], usage: { input_tokens: 12, output_tokens: 7 },
+    })
+    const provider = new OpenAIProvider()
+
+    await expect(provider.generateForExperiment(request)).resolves.toEqual({
+      outputText: '{"mensagem":"ok"}', inputTokens: 12, outputTokens: 7, completion: 'completed',
+    })
+  })
+
+  it('expõe resposta incompleta ao runner em vez de aceitá-la como concluída', async () => {
+    openAIState.create.mockResolvedValue({
+      status: 'incomplete', output_text: '', output: [], usage: { input_tokens: 12, output_tokens: 7 },
+    })
+    const provider = new OpenAIProvider()
+
+    await expect(provider.generateForExperiment(request)).resolves.toMatchObject({
+      outputText: null, completion: 'incomplete', inputTokens: 12, outputTokens: 7,
+    })
+  })
+
+  it('expõe recusa ao runner em vez de classificá-la como resposta concluída', async () => {
+    openAIState.create.mockResolvedValue({
+      status: 'completed',
+      output_text: '',
+      output: [{ type: 'message', content: [{ type: 'refusal' }] }],
+      usage: { input_tokens: 12, output_tokens: 7 },
+    })
+    const provider = new OpenAIProvider()
+
+    await expect(provider.generateForExperiment(request)).resolves.toMatchObject({
+      outputText: null, completion: 'refused', inputTokens: 12, outputTokens: 7,
+    })
   })
 
   it.each([

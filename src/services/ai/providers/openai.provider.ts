@@ -27,53 +27,8 @@ import {
   AIProviderError,
   type AIGenerationRequest,
 } from '../contracts'
+import { DARCY_RESPONSE_JSON_SCHEMA } from '../darcyResponseValidation'
 import type { AIProvider } from '../provider'
-
-const DARCY_RESPONSE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    mensagem: { type: 'string' },
-    cards: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          id: { type: 'string' },
-          tipo: { type: 'string', enum: ['reflexao', 'sugestao', 'alerta', 'validacao', 'recurso'] },
-          titulo: { type: 'string' },
-          conteudo: { type: 'string' },
-          cta: { type: 'string' },
-          prioridade: { type: 'string', enum: ['alta', 'media', 'baixa'] },
-        },
-        required: ['id', 'tipo', 'titulo', 'conteudo', 'prioridade'],
-      },
-    },
-    diagnostico: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        clareza: { type: 'number', minimum: 0, maximum: 100 },
-        coerencia: { type: 'number', minimum: 0, maximum: 100 },
-        completude: { type: 'number', minimum: 0, maximum: 100 },
-        pontosFortes: { type: 'array', items: { type: 'string' } },
-        pontosAMelhorar: { type: 'array', items: { type: 'string' } },
-      },
-      required: ['clareza', 'coerencia', 'completude', 'pontosFortes', 'pontosAMelhorar'],
-    },
-    perguntasEstrategicas: { type: 'array', items: { type: 'string' } },
-    sugestoesReferencias: { type: 'array', items: { type: 'string' } },
-    opcoesDinamicas: {
-      type: 'object',
-      additionalProperties: {
-        type: 'array',
-        items: { type: 'string' },
-      },
-    },
-  },
-  required: ['mensagem'],
-} as const
 
 export class OpenAIProvider implements AIProvider {
   public readonly name = 'openai' as const
@@ -102,32 +57,7 @@ export class OpenAIProvider implements AIProvider {
     outputTokens: number | null
   }> {
     try {
-      const input: ResponseInput = [
-        ...request.history.map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-        { role: 'user', content: request.prompt },
-      ]
-
-      const response = await this.client.responses.create({
-        model: this.model,
-        instructions: request.systemInstruction,
-        input,
-        store: false,
-        reasoning: { effort: 'none' },
-        max_output_tokens: request.options.maxOutputTokens,
-        temperature: request.options.temperature,
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'darcy_response',
-            description: 'Resposta estruturada do orientador acadêmico DARCY.',
-            strict: false,
-            schema: DARCY_RESPONSE_SCHEMA,
-          },
-        },
-      })
+      const response = await this.createResponse(request)
 
       if (!response.output_text) {
         const refused = response.output.some(
@@ -144,6 +74,59 @@ export class OpenAIProvider implements AIProvider {
     } catch (error) {
       throw this.normalizeError(error)
     }
+  }
+
+  /** Resultado bruto exclusivo do runner experimental, inclusive recusas e respostas incompletas. */
+  async generateForExperiment(request: AIGenerationRequest): Promise<{
+    outputText: string | null
+    inputTokens: number | null
+    outputTokens: number | null
+    completion: 'completed' | 'incomplete' | 'refused'
+  }> {
+    try {
+      const response = await this.createResponse(request)
+      const refused = response.output.some(
+        (item) => item.type === 'message' && item.content.some((content) => content.type === 'refusal'),
+      )
+
+      return {
+        outputText: response.output_text || null,
+        inputTokens: response.usage?.input_tokens ?? null,
+        outputTokens: response.usage?.output_tokens ?? null,
+        completion: refused ? 'refused' : response.status === 'completed' ? 'completed' : 'incomplete',
+      }
+    } catch (error) {
+      throw this.normalizeError(error)
+    }
+  }
+
+  private async createResponse(request: AIGenerationRequest) {
+    const input: ResponseInput = [
+      ...request.history.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      { role: 'user', content: request.prompt },
+    ]
+
+    return this.client.responses.create({
+      model: this.model,
+      instructions: request.systemInstruction,
+      input,
+      store: false,
+      reasoning: { effort: 'none' },
+      max_output_tokens: request.options.maxOutputTokens,
+      temperature: request.options.temperature,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'darcy_response',
+          description: 'Resposta estruturada do orientador acadêmico DARCY.',
+          strict: false,
+          schema: DARCY_RESPONSE_JSON_SCHEMA,
+        },
+      },
+    })
   }
 
   private normalizeError(error: unknown): AIProviderError {

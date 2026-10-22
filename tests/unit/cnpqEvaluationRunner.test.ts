@@ -15,7 +15,13 @@ import {
 } from '../../src/experiments/cnpqEvaluation/runner'
 
 function transportWithUsage(inputTokens = 100, outputTokens = 50): ExperimentTransport {
-  return { generate: vi.fn().mockResolvedValue({ outputText: '{"mensagem":"Sintética"}', usage: { inputTokens, outputTokens } }) }
+  return {
+    generate: vi.fn().mockResolvedValue({
+      outputText: '{"mensagem":"Sintética"}',
+      usage: { inputTokens, outputTokens },
+      completion: 'completed',
+    }),
+  }
 }
 
 describe('runner experimental CNPq D3', () => {
@@ -83,7 +89,11 @@ describe('runner experimental CNPq D3', () => {
   })
 
   it('interrompe com segurança se o provider não retorna usage', async () => {
-    const transport: ExperimentTransport = { generate: vi.fn().mockResolvedValue({ outputText: '{}', usage: { inputTokens: null, outputTokens: null } }) }
+    const transport: ExperimentTransport = {
+      generate: vi.fn().mockResolvedValue({
+        outputText: '{}', usage: { inputTokens: null, outputTokens: null }, completion: 'completed',
+      }),
+    }
     const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.30, confirmation: 'D3-CNPQ-72' })
     expect(records).toHaveLength(1)
     expect(records[0].status).toBe('missing_usage')
@@ -96,6 +106,51 @@ describe('runner experimental CNPq D3', () => {
     expect(records).toHaveLength(1)
     expect(records[0].status).toBe('uncertain_charge')
     expect(records[0].chargedUsd).toBe(records[0].reservedUsd)
+  })
+
+  it.each([
+    ['JSON inválido', '{', 'invalid_json'],
+    ['campo obrigatório ausente', '{}', 'invalid_contract'],
+    ['tipo incompatível', '{"mensagem":42}', 'invalid_contract'],
+  ] as const)('recusa %s e interrompe antes da próxima especificação', async (_label, outputText, validationFailure) => {
+    const transport: ExperimentTransport = {
+      generate: vi.fn().mockResolvedValue({
+        outputText,
+        usage: { inputTokens: 100, outputTokens: 50 },
+        completion: 'completed',
+      }),
+    }
+
+    const records = await new CnpqEvaluationRunner(transport).run({
+      mode: 'execute', optIn: true, budgetUsd: 0.03, plan: 'pilot-6', confirmation: 'D3-CNPQ-PILOT-6',
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ status: 'invalid_response', validationFailure })
+    expect(records[0].chargedUsd).toBeCloseTo(0.00008, 10)
+    expect(transport.generate).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['incompleta', 'incomplete', '{"mensagem":"parcial"}', 'incomplete_response'],
+    ['recusada', 'refused', null, 'model_refusal'],
+    ['vazia', 'completed', null, 'incomplete_response'],
+  ] as const)('interrompe sem retry quando a resposta é %s', async (_label, completion, outputText, validationFailure) => {
+    const transport: ExperimentTransport = {
+      generate: vi.fn().mockResolvedValue({
+        outputText,
+        usage: { inputTokens: 100, outputTokens: 50 },
+        completion,
+      }),
+    }
+
+    const records = await new CnpqEvaluationRunner(transport).run({
+      mode: 'execute', optIn: true, budgetUsd: 0.03, plan: 'pilot-6', confirmation: 'D3-CNPQ-PILOT-6',
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ status: 'invalid_response', validationFailure })
+    expect(transport.generate).toHaveBeenCalledOnce()
   })
 
   it('não reexecuta respostas concluídas ao retomar com artefatos reais compatíveis', async () => {
@@ -136,6 +191,16 @@ describe('runner experimental CNPq D3', () => {
     const full = createExperimentManifest([], { plan: 'full', mode: 'dry-run', budgetUsd: 0.30, confirmationRequired: 'D3-CNPQ-72' })
     expect(pilot).toMatchObject({ plan: 'pilot-6', plannedResponses: 6, abPairs: 3, repetitionsPerCondition: 1, mode: 'dry-run', status: 'simulated' })
     expect(full).toMatchObject({ plan: 'full', plannedResponses: 72, abPairs: 36, repetitionsPerCondition: 3 })
+    expect(pilot).toMatchObject({
+      protocolVersion: 'D3-B3-R3',
+      conceptualGenerationParameters: expect.objectContaining({ temperature: 0.2, topP: 0.8, topK: 40 }),
+      effectiveGenerationParameters: expect.objectContaining({
+        temperature: 0.2, maxOutputTokens: 2048, reasoningEffort: 'none', store: false, responseFormat: 'json_schema', responseSchemaStrict: false,
+      }),
+      declaredButNotAppliedParameters: { topP: 0.8, topK: 40 },
+    })
+    expect(pilot.effectiveGenerationParameters).not.toHaveProperty('topP')
+    expect(pilot.effectiveGenerationParameters).not.toHaveProperty('topK')
     expect(pilot).not.toHaveProperty('apiKey')
     expect(JSON.stringify(pilot)).not.toMatch(/"(?:api[_-]?key|authorization|secret|password)"\s*:/i)
   })
@@ -162,7 +227,11 @@ describe('runner experimental CNPq D3', () => {
     expect(getCompatibleCompletedIds(real, records, real)).toEqual(new Set(records.map((record) => record.id)))
     expect(getCompatibleCompletedIds(real, records, { ...real, plan: 'full' })).toEqual(new Set())
     expect(getCompatibleCompletedIds(real, records, { ...real, model: 'modelo-incompativel' })).toEqual(new Set())
-    expect(getCompatibleCompletedIds(real, records, { ...real, generationParameters: { ...real.generationParameters, topP: 0.7 } })).toEqual(new Set())
+    expect(getCompatibleCompletedIds(real, records, {
+      ...real,
+      declaredButNotAppliedParameters: { ...real.declaredButNotAppliedParameters, topP: 0.7 },
+    })).toEqual(new Set())
+    expect(getCompatibleCompletedIds({ ...real, protocolVersion: 'D3-B3-R1' }, records, real)).toEqual(new Set())
   })
 
   it('retoma somente os registros concluídos de execução real interrompida', () => {
