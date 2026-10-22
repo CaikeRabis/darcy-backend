@@ -1,3 +1,5 @@
+
+
 /**
  * Snapshot local da Tabela de Áreas do Conhecimento do CNPq.
  *

@@ -1,0 +1,24 @@
+Projeto: DARCY — Sistema Inteligente de Orientação Científica
+
+DECLARAÇÃO DE AUTORIA E TITULARIDADE PATRIMONIAL
+
+Autor:
+Caike Carvalho Rabis
+
+Titular dos direitos patrimoniais:
+Escrita com Ciência
+
+Ano de criação: 2026
+
+Regime de Proteção:
+Software Proprietário — Todos os direitos reservados.
+
+Copyright (c) 2026 Escrita com Ciência.
+
+Este software e sua documentação são de titularidade patrimonial da Escrita com Ciência. A autoria do software é atribuída a Caike Carvalho Rabis.
+
+Materiais de terceiros, inclusive dados, catálogos, bibliotecas e demais conteúdos incorporados, mantêm suas respectivas atribuições e condições de utilização.
+
+A reprodução, distribuição ou modificação não autorizada, total ou parcial, é proibida nos termos da legislação vigente, especialmente da Lei nº 9.609/1998 (Lei do Software) e da Lei nº 9.610/1998 (Lei de Direitos Autorais).
+
+Este aviso não constitui, por si só, comprovação jurídica de transferência de direitos.
