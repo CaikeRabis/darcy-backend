@@ -6,8 +6,10 @@ import { join } from 'node:path'
 import {
   CnpqEvaluationRunner,
   createExperimentSpecs,
+  createExperimentManifest,
   createPilotExperimentSpecs,
   D3_PILOT_MAX_CALLS,
+  getCompatibleCompletedIds,
   writeExperimentArtifacts,
   type ExperimentTransport,
 } from '../../src/experiments/cnpqEvaluation/runner'
@@ -58,6 +60,13 @@ describe('runner experimental CNPq D3', () => {
     expect(transport.generate).not.toHaveBeenCalled()
   })
 
+  it('bloqueia o plano completo sem a confirmação específica antes do transporte', async () => {
+    const transport = transportWithUsage()
+    await expect(new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.30 }))
+      .rejects.toThrow('confirmação específica obrigatória')
+    expect(transport.generate).not.toHaveBeenCalled()
+  })
+
   it('executa no máximo seis chamadas no piloto confirmado', async () => {
     const transport = transportWithUsage()
     const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.30, plan: 'pilot-6', confirmation: 'D3-CNPQ-PILOT-6' })
@@ -67,7 +76,7 @@ describe('runner experimental CNPq D3', () => {
 
   it('reserva orçamento antes da chamada e interrompe ao atingir o teto', async () => {
     const transport = transportWithUsage()
-    const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.0001 })
+    const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.0001, confirmation: 'D3-CNPQ-72' })
     expect(records).toHaveLength(1)
     expect(records[0].status).toBe('budget_blocked')
     expect(transport.generate).not.toHaveBeenCalled()
@@ -75,7 +84,7 @@ describe('runner experimental CNPq D3', () => {
 
   it('interrompe com segurança se o provider não retorna usage', async () => {
     const transport: ExperimentTransport = { generate: vi.fn().mockResolvedValue({ outputText: '{}', usage: { inputTokens: null, outputTokens: null } }) }
-    const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.30 })
+    const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.30, confirmation: 'D3-CNPQ-72' })
     expect(records).toHaveLength(1)
     expect(records[0].status).toBe('missing_usage')
     expect(records[0].chargedUsd).toBe(records[0].reservedUsd)
@@ -83,16 +92,23 @@ describe('runner experimental CNPq D3', () => {
 
   it.each(['timeout', 'rate limit', 'authentication', 'network'])('contabiliza falha incerta de %s de modo conservador', async () => {
     const transport: ExperimentTransport = { generate: vi.fn().mockRejectedValue(new Error('falha simulada')) }
-    const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.30 })
+    const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.30, confirmation: 'D3-CNPQ-72' })
     expect(records).toHaveLength(1)
     expect(records[0].status).toBe('uncertain_charge')
     expect(records[0].chargedUsd).toBe(records[0].reservedUsd)
   })
 
-  it('não reexecuta respostas concluídas ao retomar', async () => {
+  it('não reexecuta respostas concluídas ao retomar com artefatos reais compatíveis', async () => {
     const transport = transportWithUsage()
-    const firstId = createExperimentSpecs()[0].id
-    const records = await new CnpqEvaluationRunner(transport).run({ mode: 'execute', optIn: true, budgetUsd: 0.30, completedIds: new Set([firstId]) })
+    const completedRecord = {
+      id: createExperimentSpecs()[0].id, scenarioId: 'educacao-formacao-docente', condition: 'A' as const, repetition: 1,
+      status: 'completed' as const, reservedUsd: 0.01, chargedUsd: 0.001, model: 'gpt-5.6-luna' as const,
+    }
+    const interruptedManifest = createExperimentManifest([completedRecord], { plan: 'full', mode: 'execute', budgetUsd: 0.30, confirmationRequired: 'D3-CNPQ-72' })
+    const records = await new CnpqEvaluationRunner(transport).run({
+      mode: 'execute', optIn: true, budgetUsd: 0.30, confirmation: 'D3-CNPQ-72',
+      resume: { manifest: interruptedManifest, records: [completedRecord] },
+    })
     expect(records[0].status).toBe('duplicate_skipped')
     expect(transport.generate).toHaveBeenCalledTimes(71)
   })
@@ -100,10 +116,11 @@ describe('runner experimental CNPq D3', () => {
   it('gera artefatos cegos isolados, sem expor a condição na resposta avaliada', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'darcy-d3-'))
     try {
-      await writeExperimentArtifacts(directory, [{
+      const records = [{
         id: 'D3-cenario-B-r1', scenarioId: 'cenario', condition: 'B', repetition: 1,
         status: 'completed', reservedUsd: 0.01, chargedUsd: 0.001, model: 'gpt-5.6-luna', outputText: 'Resposta sintética.',
-      }])
+      }] as const
+      await writeExperimentArtifacts(directory, records, { plan: 'pilot-6', mode: 'execute', budgetUsd: 0.03, confirmationRequired: 'D3-CNPQ-PILOT-6' })
       const blind = await readFile(join(directory, 'blind-responses.ndjson'), 'utf8')
       const key = await readFile(join(directory, 'blind-key.json'), 'utf8')
       expect(blind).not.toContain('"condition"')
@@ -112,5 +129,52 @@ describe('runner experimental CNPq D3', () => {
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
+  })
+
+  it('registra manifestos distintos para piloto e experimento completo', () => {
+    const pilot = createExperimentManifest([], { plan: 'pilot-6', mode: 'dry-run', budgetUsd: 0.03, confirmationRequired: 'D3-CNPQ-PILOT-6' })
+    const full = createExperimentManifest([], { plan: 'full', mode: 'dry-run', budgetUsd: 0.30, confirmationRequired: 'D3-CNPQ-72' })
+    expect(pilot).toMatchObject({ plan: 'pilot-6', plannedResponses: 6, abPairs: 3, repetitionsPerCondition: 1, mode: 'dry-run', status: 'simulated' })
+    expect(full).toMatchObject({ plan: 'full', plannedResponses: 72, abPairs: 36, repetitionsPerCondition: 3 })
+    expect(pilot).not.toHaveProperty('apiKey')
+    expect(JSON.stringify(pilot)).not.toMatch(/"(?:api[_-]?key|authorization|secret|password)"\s*:/i)
+  })
+
+  it('não considera registros dry-run como respostas concluídas ou respostas cegas', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'darcy-d3-dry-'))
+    try {
+      const records = await new CnpqEvaluationRunner(transportWithUsage()).run({ mode: 'dry-run', optIn: false, budgetUsd: 0.03, plan: 'pilot-6' })
+      await writeExperimentArtifacts(directory, records, { plan: 'pilot-6', mode: 'dry-run', budgetUsd: 0.03, confirmationRequired: 'D3-CNPQ-PILOT-6' })
+      const manifest = JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8')) as { status: string; mode: string }
+      expect(manifest).toMatchObject({ mode: 'dry-run', status: 'simulated' })
+      expect(createExperimentManifest(records, { plan: 'pilot-6', mode: 'dry-run', budgetUsd: 0.03, confirmationRequired: 'D3-CNPQ-PILOT-6' }).estimatedReserveUsd).toBe(0.0164754)
+      expect(await readFile(join(directory, 'blind-responses.ndjson'), 'utf8')).toBe('\n')
+      expect(getCompatibleCompletedIds(createExperimentManifest(records, { plan: 'pilot-6', mode: 'dry-run', budgetUsd: 0.03, confirmationRequired: 'D3-CNPQ-PILOT-6' }), records, createExperimentManifest(records, { plan: 'pilot-6', mode: 'dry-run', budgetUsd: 0.03, confirmationRequired: 'D3-CNPQ-PILOT-6' }))).toEqual(new Set())
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('permite retomada apenas de execução real completa e compatível', async () => {
+    const records = await new CnpqEvaluationRunner(transportWithUsage()).run({ mode: 'execute', optIn: true, budgetUsd: 0.03, plan: 'pilot-6', confirmation: 'D3-CNPQ-PILOT-6' })
+    const real = createExperimentManifest(records, { plan: 'pilot-6', mode: 'execute', budgetUsd: 0.03, confirmationRequired: 'D3-CNPQ-PILOT-6' })
+    expect(real.status).toBe('completed')
+    expect(getCompatibleCompletedIds(real, records, real)).toEqual(new Set(records.map((record) => record.id)))
+    expect(getCompatibleCompletedIds(real, records, { ...real, plan: 'full' })).toEqual(new Set())
+    expect(getCompatibleCompletedIds(real, records, { ...real, model: 'modelo-incompativel' })).toEqual(new Set())
+    expect(getCompatibleCompletedIds(real, records, { ...real, generationParameters: { ...real.generationParameters, topP: 0.7 } })).toEqual(new Set())
+  })
+
+  it('retoma somente os registros concluídos de execução real interrompida', () => {
+    const incomplete = [{
+      id: 'D3-x-A-r1', scenarioId: 'cenario', condition: 'A' as const, repetition: 1,
+      status: 'completed' as const, reservedUsd: 0.01, chargedUsd: 0.001, model: 'gpt-5.6-luna' as const,
+    }, {
+      id: 'D3-x-B-r1', scenarioId: 'cenario', condition: 'B' as const, repetition: 1,
+      status: 'budget_blocked' as const, reservedUsd: 0.01, chargedUsd: 0, model: 'gpt-5.6-luna' as const,
+    }]
+    const manifest = createExperimentManifest(incomplete, { plan: 'pilot-6', mode: 'execute', budgetUsd: 0.03, confirmationRequired: 'D3-CNPQ-PILOT-6' })
+    expect(manifest.status).toBe('interrupted')
+    expect(getCompatibleCompletedIds(manifest, incomplete, manifest)).toEqual(new Set(['D3-x-A-r1']))
   })
 })

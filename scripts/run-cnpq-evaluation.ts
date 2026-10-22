@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import {
   CnpqEvaluationRunner,
@@ -35,7 +36,13 @@ runner.run({
   confirmation: process.env.DARCY_EXPERIMENT_CONFIRMATION,
 })
   .then(async (records) => {
-    await writeExperimentArtifacts(join(process.cwd(), 'experiments/results/d3-cnpq'), records)
+    const executionNamespace = `${execute ? 'real' : 'dry-run'}-${plan}-${Date.now()}-${randomUUID()}`
+    await writeExperimentArtifacts(join(process.cwd(), 'experiments/results/d3-cnpq', executionNamespace), records, {
+      plan,
+      mode: execute ? 'execute' : 'dry-run',
+      budgetUsd: configuredBudget,
+      confirmationRequired: expectedConfirmation,
+    })
     console.log(`D3 CNPq: ${records.length} registros (${execute ? 'execução' : 'dry-run'}).`)
   })
   .catch((error: unknown) => {

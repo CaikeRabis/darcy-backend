@@ -68,9 +68,40 @@ export interface ExperimentRunOptions {
   mode: 'dry-run' | 'execute'
   optIn: boolean
   budgetUsd: number
-  completedIds?: ReadonlySet<string>
+  resume?: ExperimentResumeArtifacts
   plan?: 'full' | 'pilot-6'
   confirmation?: string
+}
+
+export interface ExperimentArtifactOptions {
+  plan: 'full' | 'pilot-6'
+  mode: 'dry-run' | 'execute'
+  budgetUsd: number
+  confirmationRequired: string
+}
+
+export interface ExperimentManifest {
+  experiment: 'D3-CNPQ'
+  protocolVersion: 'D3-B3-R1'
+  plan: 'full' | 'pilot-6'
+  confirmationRequired: string
+  plannedResponses: number
+  abPairs: number
+  repetitionsPerCondition: number
+  provider: 'openai'
+  model: string
+  generationParameters: { temperature: number; topP: number; topK: number; maxOutputTokens: number }
+  priceVersion: string
+  budgetUsd: number
+  estimatedReserveUsd: number
+  mode: 'dry-run' | 'execute'
+  status: 'simulated' | 'completed' | 'interrupted'
+  generatedAt: string
+}
+
+export interface ExperimentResumeArtifacts {
+  manifest: ExperimentManifest
+  records: readonly ExperimentRecord[]
 }
 
 function estimateInputTokens(request: AIGenerationRequest): number {
@@ -121,16 +152,30 @@ export class CnpqEvaluationRunner {
     if (options.mode === 'execute' && !options.optIn) {
       throw new Error('Execução real bloqueada: opt-in explícito obrigatório.')
     }
-    if (options.mode === 'execute' && options.plan === 'pilot-6' && options.confirmation !== 'D3-CNPQ-PILOT-6') {
-      throw new Error('Execução piloto bloqueada: confirmação específica obrigatória.')
+    const plan = options.plan ?? 'full'
+    const confirmationRequired = plan === 'pilot-6' ? 'D3-CNPQ-PILOT-6' : 'D3-CNPQ-72'
+    if (options.mode === 'execute' && options.confirmation !== confirmationRequired) {
+      throw new Error('Execução experimental bloqueada: confirmação específica obrigatória.')
     }
 
     const records: ExperimentRecord[] = []
     let chargedUsd = 0
-    const specs = options.plan === 'pilot-6' ? createPilotExperimentSpecs() : createExperimentSpecs()
+    const specs = plan === 'pilot-6' ? createPilotExperimentSpecs() : createExperimentSpecs()
+    const firstRequest = specs[0]?.request
+    if (!firstRequest) throw new Error('Plano experimental sem especificações.')
+    const completedIds = options.resume
+      ? getCompatibleCompletedIds(options.resume.manifest, options.resume.records, {
+        plan,
+        provider: 'openai',
+        model: 'gpt-5.6-luna',
+        priceVersion: D3_PRICE_VERSION,
+        generationParameters: firstRequest.options,
+        confirmationRequired,
+      })
+      : new Set<string>()
     for (const spec of specs) {
       const reservedUsd = estimateCost(estimateInputTokens(spec.request), MAX_OUTPUT_TOKENS)
-      if (options.completedIds?.has(spec.id)) {
+      if (completedIds.has(spec.id)) {
         records.push({ ...toRecord(spec, 'duplicate_skipped', reservedUsd, 0) })
         continue
       }
@@ -177,9 +222,63 @@ export function createOpenAIExperimentTransport(): ExperimentTransport {
   }
 }
 
-export async function writeExperimentArtifacts(outputDirectory: string, records: readonly ExperimentRecord[]): Promise<void> {
+export function createExperimentManifest(
+  records: readonly ExperimentRecord[],
+  options: ExperimentArtifactOptions,
+): ExperimentManifest {
+  const specs = options.plan === 'pilot-6' ? createPilotExperimentSpecs() : createExperimentSpecs()
+  const firstRequest = specs[0]?.request
+  if (!firstRequest) throw new Error('Plano experimental sem especificações.')
+  const hasOnlyFinalRealStatuses = records.length === specs.length
+    && records.every((record) => record.status === 'completed' || record.status === 'duplicate_skipped')
+  return {
+    experiment: 'D3-CNPQ',
+    protocolVersion: 'D3-B3-R1',
+    plan: options.plan,
+    confirmationRequired: options.confirmationRequired,
+    plannedResponses: specs.length,
+    abPairs: specs.length / 2,
+    repetitionsPerCondition: options.plan === 'pilot-6' ? 1 : 3,
+    provider: 'openai',
+    model: 'gpt-5.6-luna',
+    generationParameters: firstRequest.options,
+    priceVersion: D3_PRICE_VERSION,
+    budgetUsd: options.budgetUsd,
+    estimatedReserveUsd: Number(records.reduce((total, record) => total + record.reservedUsd, 0).toFixed(7)),
+    mode: options.mode,
+    status: options.mode === 'dry-run' ? 'simulated' : hasOnlyFinalRealStatuses ? 'completed' : 'interrupted',
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+export function getCompatibleCompletedIds(
+  manifest: ExperimentManifest,
+  records: readonly ExperimentRecord[],
+  expected: Pick<ExperimentManifest, 'plan' | 'provider' | 'model' | 'priceVersion' | 'generationParameters' | 'confirmationRequired'>,
+): ReadonlySet<string> {
+  if (manifest.mode !== 'execute') return new Set()
+  const sameGenerationParameters = manifest.generationParameters.temperature === expected.generationParameters.temperature
+    && manifest.generationParameters.topP === expected.generationParameters.topP
+    && manifest.generationParameters.topK === expected.generationParameters.topK
+    && manifest.generationParameters.maxOutputTokens === expected.generationParameters.maxOutputTokens
+  if (
+    manifest.plan !== expected.plan
+    || manifest.provider !== expected.provider
+    || manifest.model !== expected.model
+    || manifest.priceVersion !== expected.priceVersion
+    || manifest.confirmationRequired !== expected.confirmationRequired
+    || !sameGenerationParameters
+  ) return new Set()
+  return new Set(records.filter((record) => record.status === 'completed').map((record) => record.id))
+}
+
+export async function writeExperimentArtifacts(
+  outputDirectory: string,
+  records: readonly ExperimentRecord[],
+  options: ExperimentArtifactOptions,
+): Promise<void> {
   await mkdir(outputDirectory, { recursive: true })
-  const manifest = { experiment: 'D3-CNPQ', priceVersion: D3_PRICE_VERSION, plannedResponses: 72, generatedAt: new Date().toISOString() }
+  const manifest = createExperimentManifest(records, options)
   const blind = records.filter((record) => record.status === 'completed').map((record) => ({ id: blindId(record.id), resposta: record.outputText ?? '' }))
   const key = records.filter((record) => record.status === 'completed').map((record) => ({ id: blindId(record.id), experimentId: record.id, condition: record.condition }))
   await Promise.all([
