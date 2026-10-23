@@ -20,6 +20,7 @@ import {
   ResumoAcademicoSection,
   Prisma,
 } from '@prisma/client'
+import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import {
@@ -95,6 +96,15 @@ export interface ResumoAcademicoHistoryPage {
   events: ResumoAcademicoHistoryEvent[]
   nextCursor: number | null
 }
+
+export interface ResumoAcademicoProgressSnapshot {
+  progress: ResumoAcademicoState | null
+  revision: number
+}
+
+export type ResumoAcademicoProgressSaveResult =
+  | { status: 'saved'; progress: ResumoAcademicoState; revision: number }
+  | { status: 'conflict' }
 
 async function findOwnedResumoAcademicoProject(
   database: ResumoDatabaseClient,
@@ -297,17 +307,19 @@ export async function getOwnedResumoScientificContext(
 export async function getResumoAcademicoProgress(
   projectId: string,
   profileId: string,
-): Promise<ResumoAcademicoState | null | undefined> {
+): Promise<ResumoAcademicoProgressSnapshot | undefined> {
   const project = await findOwnedResumoAcademicoProject(prisma, projectId, profileId)
 
   if (!project) return undefined
 
   const progress = await prisma.resumoAcademicoProgress.findUnique({
     where: { projectId: project.id },
-    select: { progress: true },
+    select: { progress: true, revision: true },
   })
 
-  return progress ? parsePersistedProgress(progress.progress) : null
+  return progress
+    ? { progress: parsePersistedProgress(progress.progress), revision: progress.revision }
+    : { progress: null, revision: 0 }
 }
 
 /**
@@ -320,9 +332,11 @@ export async function getOwnedResumoAutoralDecisionContext(
 ): Promise<string | null | undefined> {
   const progress = await getResumoAcademicoProgress(projectId, profileId)
 
-  if (progress === undefined || progress === null) return progress
+  if (progress === undefined || progress.progress === null) {
+    return progress === undefined ? undefined : null
+  }
 
-  const decisao = progress.decisoes_autorais?.find(
+  const decisao = progress.progress.decisoes_autorais?.find(
     (item) => item.id === 'contexto_problema_central',
   )
 
@@ -335,7 +349,8 @@ export async function upsertResumoAcademicoProgress(
   projectId: string,
   profileId: string,
   progress: ResumoAcademicoState,
-): Promise<ResumoAcademicoState | undefined> {
+  expectedRevision: number,
+): Promise<ResumoAcademicoProgressSaveResult | undefined> {
   for (let attempt = 0; attempt < MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS; attempt += 1) {
     try {
       return await prisma.$transaction(async (transaction) => {
@@ -344,9 +359,59 @@ export async function upsertResumoAcademicoProgress(
 
         const existing = await transaction.resumoAcademicoProgress.findUnique({
           where: { projectId: project.id },
-          select: { progress: true },
+          select: { progress: true, revision: true },
         })
-        const previous = existing ? parsePersistedProgress(existing.progress) : null
+
+        if (!existing) {
+          if (expectedRevision !== 0) return { status: 'conflict' as const }
+
+          const persistedProgress = await transaction.resumoAcademicoProgress.create({
+            data: { projectId: project.id, progress, revision: 1 },
+            select: { progress: true, revision: true },
+          })
+          const eventCandidates = deriveResumoAcademicoHistoryEvents(null, progress)
+
+          if (eventCandidates.length > 0) {
+            const lastEvent = await transaction.resumoAcademicoHistoryEvent.findFirst({
+              where: { projectId: project.id },
+              orderBy: { sequence: 'desc' },
+              select: { sequence: true },
+            })
+
+            for (const [index, event] of eventCandidates.entries()) {
+              await transaction.resumoAcademicoHistoryEvent.create({
+                data: {
+                  projectId: project.id,
+                  sequence: (lastEvent?.sequence ?? 0) + index + 1,
+                  type: event.type,
+                  actor: event.actor,
+                  ...(event.section ? { section: event.section } : {}),
+                  summary: event.summary,
+                },
+              })
+            }
+          }
+
+          return {
+            status: 'saved' as const,
+            progress: parsePersistedProgress(persistedProgress.progress),
+            revision: persistedProgress.revision,
+          }
+        }
+
+        if (existing.revision !== expectedRevision) return { status: 'conflict' as const }
+
+        const previous = parsePersistedProgress(existing.progress)
+        if (isDeepStrictEqual(previous, progress)) {
+          return { status: 'saved' as const, progress: previous, revision: existing.revision }
+        }
+
+        const updated = await transaction.resumoAcademicoProgress.updateMany({
+          where: { projectId: project.id, revision: expectedRevision },
+          data: { progress, revision: { increment: 1 } },
+        })
+        if (updated.count !== 1) return { status: 'conflict' as const }
+
         const eventCandidates = deriveResumoAcademicoHistoryEvents(previous, progress)
         const lastEvent = eventCandidates.length > 0
           ? await transaction.resumoAcademicoHistoryEvent.findFirst({
@@ -355,13 +420,6 @@ export async function upsertResumoAcademicoProgress(
             select: { sequence: true },
           })
           : null
-
-        const persistedProgress = await transaction.resumoAcademicoProgress.upsert({
-          where: { projectId: project.id },
-          create: { projectId: project.id, progress },
-          update: { progress },
-          select: { progress: true },
-        })
 
         if (eventCandidates.length > 0) {
           for (const [index, event] of eventCandidates.entries()) {
@@ -378,7 +436,7 @@ export async function upsertResumoAcademicoProgress(
           }
         }
 
-        return parsePersistedProgress(persistedProgress.progress)
+        return { status: 'saved' as const, progress, revision: expectedRevision + 1 }
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
     } catch (error) {
       if (!isSerializableTransactionError(error) || attempt === MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS - 1) {

@@ -144,6 +144,7 @@ export const ResumoAcademicoStateSchema = z.object({
 
 export const ResumoAcademicoProgressRequestSchema = z.object({
   progress: ResumoAcademicoStateSchema,
+  expectedRevision: z.number().int().nonnegative(),
 }).strict()
 
 export type ResumoAcademicoState = z.infer<typeof ResumoAcademicoStateSchema>

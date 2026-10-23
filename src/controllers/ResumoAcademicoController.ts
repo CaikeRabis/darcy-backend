@@ -75,6 +75,16 @@ function sendProgressOperationError(response: Response): void {
   })
 }
 
+function sendRevisionConflict(response: Response): void {
+  response.status(409).json({
+    ok: false,
+    error: {
+      code: 'RESUMO_PROGRESS_REVISION_CONFLICT',
+      message: 'O progresso foi alterado em outra sessão. Recarregue a versão mais recente antes de salvar novamente.',
+    },
+  })
+}
+
 export class ResumoAcademicoController {
   static async getHistory(request: Request, response: Response): Promise<void> {
     const profileId = getAuthenticatedProfileId(request)
@@ -132,7 +142,7 @@ export class ResumoAcademicoController {
         return
       }
 
-      response.status(200).json({ ok: true, progress })
+      response.status(200).json({ ok: true, progress: progress.progress, revision: progress.revision })
     } catch {
       sendProgressOperationError(response)
     }
@@ -154,18 +164,24 @@ export class ResumoAcademicoController {
     }
 
     try {
-      const progress = await upsertResumoAcademicoProgress(
+      const result = await upsertResumoAcademicoProgress(
         paramsResult.data.projectId,
         profileId,
         bodyResult.data.progress,
+        bodyResult.data.expectedRevision,
       )
 
-      if (progress === undefined) {
+      if (result === undefined) {
         sendProjectNotFound(response)
         return
       }
 
-      response.status(200).json({ ok: true, progress })
+      if (result.status === 'conflict') {
+        sendRevisionConflict(response)
+        return
+      }
+
+      response.status(200).json({ ok: true, progress: result.progress, revision: result.revision })
     } catch {
       sendProgressOperationError(response)
     }

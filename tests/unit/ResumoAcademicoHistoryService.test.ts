@@ -8,7 +8,8 @@ import type { ResumoAcademicoState } from '../../src/schemas/resumoAcademico.sch
 const mocks = vi.hoisted(() => ({
   projectFindFirst: vi.fn(),
   progressFindUnique: vi.fn(),
-  progressUpsert: vi.fn(),
+  progressCreate: vi.fn(),
+  progressUpdateMany: vi.fn(),
   historyFindFirst: vi.fn(),
   historyFindMany: vi.fn(),
   historyCreate: vi.fn(),
@@ -20,7 +21,8 @@ vi.mock('../../src/lib/prisma', () => ({
     project: { findFirst: mocks.projectFindFirst },
     resumoAcademicoProgress: {
       findUnique: mocks.progressFindUnique,
-      upsert: mocks.progressUpsert,
+      create: mocks.progressCreate,
+      updateMany: mocks.progressUpdateMany,
     },
     resumoAcademicoHistoryEvent: {
       findFirst: mocks.historyFindFirst,
@@ -33,6 +35,7 @@ vi.mock('../../src/lib/prisma', () => ({
 
 import {
   deriveResumoAcademicoHistoryEvents,
+  getResumoAcademicoProgress,
   listOwnedResumoAcademicoHistory,
   upsertResumoAcademicoProgress,
 } from '../../src/services/ResumoAcademicoService'
@@ -76,7 +79,8 @@ function transactionClient() {
     project: { findFirst: mocks.projectFindFirst },
     resumoAcademicoProgress: {
       findUnique: mocks.progressFindUnique,
-      upsert: mocks.progressUpsert,
+      create: mocks.progressCreate,
+      updateMany: mocks.progressUpdateMany,
     },
     resumoAcademicoHistoryEvent: {
       findFirst: mocks.historyFindFirst,
@@ -162,7 +166,27 @@ describe('histórico imutável do Resumo Acadêmico', () => {
     expect(deriveResumoAcademicoHistoryEvents(current, retry)).toEqual([])
   })
 
-  it('persiste progresso e eventos na mesma transação, com sequência posterior ao último evento', async () => {
+  it('retorna revisão zero para projeto legado sem progresso e a revisão persistida quando existente', async () => {
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.progressFindUnique.mockResolvedValueOnce(null)
+
+    await expect(getResumoAcademicoProgress('project-owned', 'profile-a')).resolves.toEqual({
+      progress: null,
+      revision: 0,
+    })
+
+    const progress = makeProgress()
+    mocks.progressFindUnique.mockResolvedValueOnce({ progress, revision: 4 })
+    await expect(getResumoAcademicoProgress('project-owned', 'profile-a')).resolves.toEqual({
+      progress,
+      revision: 4,
+    })
+
+    mocks.projectFindFirst.mockResolvedValue(null)
+    await expect(getResumoAcademicoProgress('project-alheio', 'profile-a')).resolves.toBeUndefined()
+  })
+
+  it('persiste alteração e eventos na mesma transação, incrementando uma revisão válida', async () => {
     const previous = makeProgress()
     const next = makeProgress()
     next.classificacao_cnpq = {
@@ -175,19 +199,27 @@ describe('histórico imutável do Resumo Acadêmico', () => {
       },
     }
     mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
-    mocks.progressFindUnique.mockResolvedValue({ progress: previous })
+    mocks.progressFindUnique.mockResolvedValue({ progress: previous, revision: 7 })
     mocks.historyFindFirst.mockResolvedValue({ sequence: 7 })
-    mocks.progressUpsert.mockResolvedValue({ progress: next })
+    mocks.progressUpdateMany.mockResolvedValue({ count: 1 })
     mocks.historyCreate.mockResolvedValue(event(8))
 
-    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', next)).resolves.toEqual(next)
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', next, 7)).resolves.toEqual({
+      status: 'saved',
+      progress: next,
+      revision: 8,
+    })
 
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',
     })
-    const progressUpsertCallOrder = mocks.progressUpsert.mock.invocationCallOrder[0]
+    const progressUpdateCallOrder = mocks.progressUpdateMany.mock.invocationCallOrder[0]
     const historyCreateCallOrder = mocks.historyCreate.mock.invocationCallOrder[0]
-    expect(progressUpsertCallOrder).toBeLessThan(historyCreateCallOrder)
+    expect(progressUpdateCallOrder).toBeLessThan(historyCreateCallOrder)
+    expect(mocks.progressUpdateMany).toHaveBeenCalledWith({
+      where: { projectId: 'project-owned', revision: 7 },
+      data: { progress: next, revision: { increment: 1 } },
+    })
     expect(mocks.historyCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         projectId: 'project-owned',
@@ -199,10 +231,73 @@ describe('histórico imutável do Resumo Acadêmico', () => {
 
     mocks.historyFindFirst.mockClear()
     mocks.historyCreate.mockClear()
-    mocks.progressFindUnique.mockResolvedValue({ progress: next })
-    await upsertResumoAcademicoProgress('project-owned', 'profile-a', next)
+    mocks.progressUpdateMany.mockClear()
+    mocks.progressFindUnique.mockResolvedValue({ progress: next, revision: 8 })
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', next, 8)).resolves.toEqual({
+      status: 'saved',
+      progress: next,
+      revision: 8,
+    })
     expect(mocks.historyCreate).not.toHaveBeenCalled()
     expect(mocks.historyFindFirst).not.toHaveBeenCalled()
+    expect(mocks.progressUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it('cria o primeiro progresso somente com revisão zero e retorna revisão um', async () => {
+    const first = makeProgress()
+    first.contexto.texto_sugerido = 'Primeiro rascunho.'
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.progressFindUnique.mockResolvedValue(null)
+    mocks.progressCreate.mockResolvedValue({ progress: first, revision: 1 })
+    mocks.historyFindFirst.mockResolvedValue(null)
+
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', first, 0)).resolves.toEqual({
+      status: 'saved',
+      progress: first,
+      revision: 1,
+    })
+    expect(mocks.progressCreate).toHaveBeenCalledWith({
+      data: { projectId: 'project-owned', progress: first, revision: 1 },
+      select: { progress: true, revision: true },
+    })
+  })
+
+  it('não cria progresso inexistente quando expectedRevision não é zero', async () => {
+    const first = makeProgress()
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.progressFindUnique.mockResolvedValue(null)
+
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', first, 1)).resolves.toEqual({
+      status: 'conflict',
+    })
+    expect(mocks.progressCreate).not.toHaveBeenCalled()
+    expect(mocks.historyCreate).not.toHaveBeenCalled()
+  })
+
+  it('rejeita revisão desatualizada sem alterar progresso ou histórico', async () => {
+    const current = makeProgress()
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.progressFindUnique.mockResolvedValue({ progress: current, revision: 3 })
+
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', current, 2)).resolves.toEqual({
+      status: 'conflict',
+    })
+    expect(mocks.progressUpdateMany).not.toHaveBeenCalled()
+    expect(mocks.historyCreate).not.toHaveBeenCalled()
+  })
+
+  it('retorna conflito quando a atualização condicional perde uma corrida', async () => {
+    const current = makeProgress()
+    const next = makeProgress()
+    next.tema = 'Atualização concorrente'
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.progressFindUnique.mockResolvedValue({ progress: current, revision: 3 })
+    mocks.progressUpdateMany.mockResolvedValue({ count: 0 })
+
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', next, 3)).resolves.toEqual({
+      status: 'conflict',
+    })
+    expect(mocks.historyCreate).not.toHaveBeenCalled()
   })
 
   it.each(['P2034', 'P2002'] as const)(
@@ -212,9 +307,9 @@ describe('histórico imutável do Resumo Acadêmico', () => {
     const next = makeProgress()
     next.contexto.texto_sugerido = 'Rascunho de teste.'
     mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
-    mocks.progressFindUnique.mockResolvedValue({ progress: previous })
+    mocks.progressFindUnique.mockResolvedValue({ progress: previous, revision: 3 })
     mocks.historyFindFirst.mockResolvedValue({ sequence: 3 })
-    mocks.progressUpsert.mockResolvedValue({ progress: next })
+    mocks.progressUpdateMany.mockResolvedValue({ count: 1 })
     mocks.historyCreate.mockResolvedValue(event(4))
     mocks.transaction
       .mockRejectedValueOnce({ code: errorCode })
@@ -222,7 +317,11 @@ describe('histórico imutável do Resumo Acadêmico', () => {
         callback: (client: ReturnType<typeof transactionClient>) => Promise<unknown>,
       ) => callback(transactionClient()))
 
-    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', next)).resolves.toEqual(next)
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', next, 3)).resolves.toEqual({
+      status: 'saved',
+      progress: next,
+      revision: 4,
+    })
 
     expect(mocks.transaction).toHaveBeenCalledTimes(2)
     expect(mocks.historyCreate).toHaveBeenCalledTimes(1)
@@ -231,6 +330,49 @@ describe('histórico imutável do Resumo Acadêmico', () => {
     }))
     },
   )
+
+  it('revalida a revisão depois de um conflito serializável antes de tentar gravar novamente', async () => {
+    const previous = makeProgress()
+    const next = makeProgress()
+    next.tema = 'Mudança local pendente'
+    const currentAfterConcurrentSave = makeProgress()
+    currentAfterConcurrentSave.tema = 'Mudança de outra sessão'
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.progressFindUnique
+      .mockResolvedValueOnce({ progress: previous, revision: 2 })
+      .mockResolvedValueOnce({ progress: currentAfterConcurrentSave, revision: 3 })
+    mocks.progressUpdateMany.mockResolvedValue({ count: 1 })
+    mocks.transaction
+      .mockImplementationOnce(async (
+        callback: (client: ReturnType<typeof transactionClient>) => Promise<unknown>,
+      ) => {
+        await callback(transactionClient())
+        throw { code: 'P2034' }
+      })
+      .mockImplementation(async (
+        callback: (client: ReturnType<typeof transactionClient>) => Promise<unknown>,
+      ) => callback(transactionClient()))
+
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', next, 2)).resolves.toEqual({
+      status: 'conflict',
+    })
+    expect(mocks.transaction).toHaveBeenCalledTimes(2)
+  })
+
+  it('trata criação concorrente como conflito após P2002, sem reaplicar o snapshot', async () => {
+    const first = makeProgress()
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.progressFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ progress: first, revision: 1 })
+    mocks.progressCreate.mockRejectedValueOnce({ code: 'P2002' })
+
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', first, 0)).resolves.toEqual({
+      status: 'conflict',
+    })
+    expect(mocks.transaction).toHaveBeenCalledTimes(2)
+    expect(mocks.historyCreate).not.toHaveBeenCalled()
+  })
 
   it('pagina por sequência, em ordem determinística, somente depois de validar ownership', async () => {
     mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
