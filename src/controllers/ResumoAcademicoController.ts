@@ -18,11 +18,17 @@ import { z } from 'zod'
 import { ResumoAcademicoProgressRequestSchema } from '../schemas/resumoAcademico.schema'
 import {
   getResumoAcademicoProgress,
+  listOwnedResumoAcademicoHistory,
   upsertResumoAcademicoProgress,
 } from '../services/ResumoAcademicoService'
 
 const ProjectParamsSchema = z.object({
   projectId: z.string().min(1).max(100),
+}).strict()
+
+const HistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  beforeSequence: z.coerce.number().int().min(1).optional(),
 }).strict()
 
 function getAuthenticatedProfileId(request: Request): string | null {
@@ -70,6 +76,40 @@ function sendProgressOperationError(response: Response): void {
 }
 
 export class ResumoAcademicoController {
+  static async getHistory(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = ProjectParamsSchema.safeParse(request.params)
+    const queryResult = HistoryQuerySchema.safeParse(request.query)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+
+    if (!paramsResult.success || !queryResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const history = await listOwnedResumoAcademicoHistory(
+        paramsResult.data.projectId,
+        profileId,
+        queryResult.data.limit,
+        queryResult.data.beforeSequence,
+      )
+
+      if (!history) {
+        sendProjectNotFound(response)
+        return
+      }
+
+      response.status(200).json({ ok: true, history })
+    } catch {
+      sendProgressOperationError(response)
+    }
+  }
+
   static async getProgress(request: Request, response: Response): Promise<void> {
     const profileId = getAuthenticatedProfileId(request)
     const paramsResult = ProjectParamsSchema.safeParse(request.params)

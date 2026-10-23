@@ -17,6 +17,29 @@ enum ProjectType {
   resumo_academico @map("resumo-academico")
 }
 
+enum ResumoAcademicoEventType {
+  rascunho_gerado
+  rascunho_regenerado
+  secao_aprovada
+  decisao_autoral_alterada
+  classificacao_cientifica_alterada
+  resumo_consolidado
+}
+
+enum ResumoAcademicoEventActor {
+  pesquisador
+  darcy
+  sistema
+}
+
+enum ResumoAcademicoSection {
+  contexto
+  objetivo
+  metodologia
+  fundamentacao_teorica
+  resultados
+}
+
 model Profile {
   /// UUID correspondente a auth.users.id, gerenciado pelo Supabase Auth.
   id        String    @id @db.Uuid
@@ -35,6 +58,7 @@ model Project {
   type                    ProjectType
   profile                 Profile                  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   resumoAcademicoProgress ResumoAcademicoProgress?
+  resumoAcademicoHistory ResumoAcademicoHistoryEvent[]
   createdAt               DateTime                 @default(now()) @map("created_at")
   updatedAt               DateTime                 @updatedAt @map("updated_at")
 
@@ -51,4 +75,25 @@ model ResumoAcademicoProgress {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("resumo_academico_progress")
+}
+
+/// Registro imutável de acontecimentos de domínio do Resumo Acadêmico.
+/// O estado atual segue materializado em ResumoAcademicoProgress; textos de
+/// versões futuras serão associados por contentVersionRef apenas quando uma
+/// versão relevante for criada explicitamente.
+model ResumoAcademicoHistoryEvent {
+  id                String                     @id @default(cuid())
+  projectId         String                     @map("project_id")
+  sequence          Int
+  type              ResumoAcademicoEventType
+  actor             ResumoAcademicoEventActor
+  section           ResumoAcademicoSection?
+  summary           String
+  contentVersionRef String?                    @map("content_version_ref")
+  project           Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                   @default(now()) @map("created_at")
+
+  @@unique([projectId, sequence])
+  @@index([projectId, createdAt])
+  @@map("resumo_academico_history_events")
 }
