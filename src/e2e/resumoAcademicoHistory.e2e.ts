@@ -25,12 +25,18 @@ interface HistoryPage {
   nextCursor: number | null
 }
 
+interface ProgressSnapshot {
+  progress: unknown
+  revision: number
+}
+
 export interface ResumoHistoryE2EReport {
   initialEventCount: number
   finalEventCount: number
   minimumSequence: number
   maximumSequence: number
   concurrentWriteStatuses: [number, number]
+  recoveryStatus: number
   ownershipStatus: number
   firstPageEventCount: number
   secondPageEventCount: number
@@ -83,6 +89,31 @@ function getHistoryPage(value: unknown): HistoryPage | undefined {
   const nextCursor = value.history.nextCursor
   if (!validEvents || (typeof nextCursor !== 'number' && nextCursor !== null)) return undefined
   return { events: events as HistoryEvent[], nextCursor }
+}
+
+function getProgressSnapshot(value: unknown): ProgressSnapshot | undefined {
+  if (!isRecord(value) || value.ok !== true || !Object.prototype.hasOwnProperty.call(value, 'progress')) {
+    return undefined
+  }
+
+  if (typeof value.revision !== 'number' || !Number.isInteger(value.revision) || value.revision < 0) {
+    return undefined
+  }
+
+  return { progress: value.progress, revision: value.revision }
+}
+
+function isRevisionConflict(value: unknown): boolean {
+  return isRecord(value) && isRecord(value.error) && value.error.code === 'RESUMO_PROGRESS_REVISION_CONFLICT'
+}
+
+function getSectionSuggestedText(progress: unknown, section: keyof Pick<
+  ResumoAcademicoState,
+  'contexto' | 'objetivo' | 'metodologia' | 'fundamentacao_teorica' | 'resultados'
+>): string | undefined {
+  if (!isRecord(progress) || !isRecord(progress[section])) return undefined
+  const text = progress[section].texto_sugerido
+  return typeof text === 'string' ? text : undefined
 }
 
 async function requestApi(path: string, token: string, init: RequestInit = {}): Promise<ApiResponse> {
@@ -151,23 +182,42 @@ export async function runResumoAcademicoHistoryE2E(): Promise<ResumoHistoryE2ERe
 
   try {
     const marker = 'MARCADOR_SINTETICO_NAO_PERSISTIR'
+    const progressPath = `/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}`
+    const initialProgressResponse = await requestApi(progressPath, tokenA)
+    const initialProgress = getProgressSnapshot(initialProgressResponse.body)
+    const initialProgressShape = initialProgress === undefined
+      ? 'invalido'
+      : initialProgress.progress === null
+        ? 'nulo'
+        : 'nao-nulo'
+    const initialRevision = initialProgress?.revision ?? 'invalida'
+    assertCondition(
+      initialProgressResponse.status === 200 && initialProgress?.progress === null && initialProgress.revision === 0,
+      `O projeto sintético não iniciou com revisão zero (status=${initialProgressResponse.status}; progresso=${initialProgressShape}; revisao=${initialRevision}).`,
+    )
+    let knownRevision = initialProgress.revision
+
     const initial = createProgress()
     initial.contexto.texto_sugerido = marker
     initial.contexto.status = 'aprovado'
     initial.decisoes_autorais = [{ id: 'contexto_problema_central', escolha: 'Escolha sintética', justificativa: marker, atualizada_em: '2026-10-23T12:00:00.000Z' }]
     initial.classificacao_cnpq = { versao_catalogo: 'cnpq-tac-2013-04-25', primaria: { codigo: '7.08.00.00-6', nome: 'Educação', nivel: 'area', caminho_codigos: ['7.00.00.00-0', '7.08.00.00-6'] } }
     initial.resumo_completo = marker
-    const initialSave = await requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}`, tokenA, {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: initial }),
+    const initialSave = await requestApi(progressPath, tokenA, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: initial, expectedRevision: knownRevision }),
     })
-    assertCondition(initialSave.status === 200, `Persistência inicial retornou HTTP ${initialSave.status}.`)
+    const initialSaveProgress = getProgressSnapshot(initialSave.body)
+    assertCondition(initialSave.status === 200 && initialSaveProgress, `Persistência inicial retornou HTTP ${initialSave.status}.`)
+    knownRevision = initialSaveProgress.revision
 
     const regenerated = structuredClone(initial)
     regenerated.contexto.texto_sugerido = `${marker}_REGENERADO`
-    const regeneration = await requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}`, tokenA, {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: regenerated }),
+    const regeneration = await requestApi(progressPath, tokenA, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: regenerated, expectedRevision: knownRevision }),
     })
-    assertCondition(regeneration.status === 200, `Regeneração retornou HTTP ${regeneration.status}.`)
+    const regeneratedProgress = getProgressSnapshot(regeneration.body)
+    assertCondition(regeneration.status === 200 && regeneratedProgress, `Regeneração retornou HTTP ${regeneration.status}.`)
+    knownRevision = regeneratedProgress.revision
 
     const initialHistoryResponse = await requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}/history?limit=100`, tokenA)
     const initialHistory = getHistoryPage(initialHistoryResponse.body)
@@ -177,10 +227,14 @@ export async function runResumoAcademicoHistoryE2E(): Promise<ResumoHistoryE2ERe
     }
     assertSafeEvents(initialHistory.events, marker)
 
-    const noOp = await requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}`, tokenA, {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: regenerated }),
+    const noOp = await requestApi(progressPath, tokenA, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: regenerated, expectedRevision: knownRevision }),
     })
-    assertCondition(noOp.status === 200, `Autosave idêntico retornou HTTP ${noOp.status}.`)
+    const noOpProgress = getProgressSnapshot(noOp.body)
+    assertCondition(
+      noOp.status === 200 && noOpProgress?.revision === knownRevision,
+      `Autosave idêntico retornou HTTP ${noOp.status}.`,
+    )
     const afterNoOpResponse = await requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}/history?limit=100`, tokenA)
     const afterNoOp = getHistoryPage(afterNoOpResponse.body)
     assertCondition(afterNoOpResponse.status === 200 && afterNoOp, 'Não foi possível verificar o autosave idêntico.')
@@ -190,11 +244,19 @@ export async function runResumoAcademicoHistoryE2E(): Promise<ResumoHistoryE2ERe
     concurrentA.objetivo.texto_sugerido = 'OBJETIVO_SINTETICO_A'
     const concurrentB = structuredClone(regenerated)
     concurrentB.metodologia.texto_sugerido = 'METODOLOGIA_SINTETICA_B'
+    const concurrentRevision = knownRevision
     const [writeA, writeB] = await Promise.all([
-      requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}`, tokenA, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: concurrentA }) }),
-      requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}`, tokenA, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: concurrentB }) }),
+      requestApi(progressPath, tokenA, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: concurrentA, expectedRevision: concurrentRevision }) }),
+      requestApi(progressPath, tokenA, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: concurrentB, expectedRevision: concurrentRevision }) }),
     ])
-    assertCondition(writeA.status === 200 && writeB.status === 200, 'Gravação concorrente não foi concluída.')
+    const successfulWrite = writeA.status === 200 ? writeA : writeB.status === 200 ? writeB : undefined
+    const conflictingWrite = writeA.status === 409 ? writeA : writeB.status === 409 ? writeB : undefined
+    if (!successfulWrite || !conflictingWrite || writeA.status === writeB.status || !isRevisionConflict(conflictingWrite.body)) {
+      throw new Error('Gravações concorrentes não produziram exatamente um sucesso e um conflito de revisão.')
+    }
+    const successfulProgress = getProgressSnapshot(successfulWrite.body)
+    assertCondition(successfulProgress, 'A gravação concorrente vencedora não retornou revisão válida.')
+    knownRevision = successfulProgress.revision
 
     const finalHistoryResponse = await requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}/history?limit=100`, tokenA)
     const finalHistory = getHistoryPage(finalHistoryResponse.body)
@@ -203,6 +265,53 @@ export async function runResumoAcademicoHistoryE2E(): Promise<ResumoHistoryE2ERe
     assertCondition(new Set(sequences).size === sequences.length, 'Foram encontradas sequências duplicadas.')
     assertCondition(sequences.every((sequence, index) => index === 0 || sequences[index - 1] > sequence), 'A ordenação por sequência não é determinística.')
     assertSafeEvents(finalHistory.events, marker)
+    assertCondition(
+      finalHistory.events.length === afterNoOp.events.length + 1,
+      'O conflito de revisão criou um evento de histórico adicional.',
+    )
+
+    const currentProgressResponse = await requestApi(progressPath, tokenA)
+    const currentProgress = getProgressSnapshot(currentProgressResponse.body)
+    assertCondition(
+      currentProgressResponse.status === 200 && currentProgress?.revision === knownRevision,
+      'Não foi possível recuperar a revisão vencedora após o conflito.',
+    )
+    const winningProgress = writeA.status === 200 ? concurrentA : concurrentB
+    const winningSection = writeA.status === 200 ? 'objetivo' : 'metodologia'
+    assertCondition(
+      getSectionSuggestedText(currentProgress.progress, winningSection) === winningProgress[winningSection].texto_sugerido,
+      'O estado vencedor não permaneceu persistido após o conflito.',
+    )
+
+    const recovered = structuredClone(winningProgress)
+    recovered.resultados.texto_sugerido = 'RESULTADO_SINTETICO_APOS_RECUPERACAO'
+    const recovery = await requestApi(progressPath, tokenA, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ progress: recovered, expectedRevision: currentProgress.revision }),
+    })
+    const recoveredProgress = getProgressSnapshot(recovery.body)
+    assertCondition(recovery.status === 200 && recoveredProgress, 'A recuperação após o conflito não foi salva.')
+    knownRevision = recoveredProgress.revision
+
+    const recoveredStateResponse = await requestApi(progressPath, tokenA)
+    const recoveredState = getProgressSnapshot(recoveredStateResponse.body)
+    assertCondition(
+      recoveredStateResponse.status === 200
+        && recoveredState?.revision === knownRevision
+        && getSectionSuggestedText(recoveredState.progress, 'resultados') === recovered.resultados.texto_sugerido,
+      'O estado recuperado não permaneceu persistido após o novo salvamento.',
+    )
+    const recoveredHistoryResponse = await requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}/history?limit=100`, tokenA)
+    const recoveredHistory = getHistoryPage(recoveredHistoryResponse.body)
+    assertCondition(
+      recoveredHistoryResponse.status === 200 && recoveredHistory && recoveredHistory.events.length === finalHistory.events.length + 1,
+      'O salvamento recuperado não foi registrado corretamente no histórico.',
+    )
+    const recoveredSequences = recoveredHistory.events.map((event) => event.sequence)
+    assertCondition(new Set(recoveredSequences).size === recoveredSequences.length, 'A recuperação criou sequência duplicada.')
+    assertCondition(recoveredSequences.every((sequence, index) => index === 0 || recoveredSequences[index - 1] > sequence), 'A recuperação alterou a ordenação determinística.')
+    assertSafeEvents(recoveredHistory.events, marker)
 
     const firstPageResponse = await requestApi(`/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}/history?limit=2`, tokenA)
     const firstPage = getHistoryPage(firstPageResponse.body)
@@ -218,9 +327,9 @@ export async function runResumoAcademicoHistoryE2E(): Promise<ResumoHistoryE2ERe
     const cleanup = await cleanupProject(projectId, tokenA)
     return {
       initialEventCount: initialHistory.events.length,
-      finalEventCount: finalHistory.events.length,
-      minimumSequence: Math.min(...sequences), maximumSequence: Math.max(...sequences),
-      concurrentWriteStatuses: [writeA.status, writeB.status], ownershipStatus: foreignHistory.status,
+      finalEventCount: recoveredHistory.events.length,
+      minimumSequence: Math.min(...recoveredSequences), maximumSequence: Math.max(...recoveredSequences),
+      concurrentWriteStatuses: [writeA.status, writeB.status], recoveryStatus: recovery.status, ownershipStatus: foreignHistory.status,
       firstPageEventCount: firstPage.events.length, secondPageEventCount: secondPage.events.length, cleanup,
     }
   } catch (error) {
