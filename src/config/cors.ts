@@ -1,7 +1,7 @@
 import type { CorsOptions } from 'cors'
 
 const DEVELOPMENT_ORIGIN = 'http://localhost:5174'
-const PRODUCTION_ORIGIN = 'https://darcy.app.br'
+const PRODUCTION_ORIGINS = ['https://app.darcy.app.br', 'https://darcy.app.br']
 
 export class CorsOriginNotAllowedError extends Error {
   readonly statusCode = 403
@@ -14,16 +14,17 @@ export class CorsOriginNotAllowedError extends Error {
 
 function getAllowedOrigins(environmentVariables: NodeJS.ProcessEnv = process.env): string[] {
   const environment = environmentVariables.NODE_ENV
-  const configuredOrigin = environmentVariables.CORS_ORIGIN?.trim()
+  const configuredOrigin = environmentVariables.CORS_ORIGIN?.trim() ?? ''
 
   if (environment === 'production') {
-    if (configuredOrigin !== PRODUCTION_ORIGIN) {
+    const origins = configuredOrigin.split(',').map((origin) => origin.trim()).filter(Boolean)
+    if (origins.length === 0 || origins.some((origin) => !PRODUCTION_ORIGINS.includes(origin))) {
       throw new Error(
-        `Configuração CORS inválida: em produção, CORS_ORIGIN deve ser ${PRODUCTION_ORIGIN}.`,
+        `Configuração CORS inválida: em produção, CORS_ORIGIN deve conter somente origens oficiais.`,
       )
     }
 
-    return [PRODUCTION_ORIGIN]
+    return origins
   }
 
   if (configuredOrigin && configuredOrigin !== DEVELOPMENT_ORIGIN) {

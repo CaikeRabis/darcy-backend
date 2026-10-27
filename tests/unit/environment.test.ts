@@ -48,5 +48,10 @@ describe('validação de ambiente', () => {
     invalidProductionCors.NODE_ENV = 'production'
     invalidProductionCors.CORS_ORIGIN = 'https://outro-dominio.example'
     expect(() => validateEnvironment(invalidProductionCors)).toThrow('CORS_ORIGIN')
+
+    const validTransitionCors = createValidEnvironment()
+    validTransitionCors.NODE_ENV = 'production'
+    validTransitionCors.CORS_ORIGIN = 'https://app.darcy.app.br,https://darcy.app.br'
+    expect(() => validateEnvironment(validTransitionCors)).not.toThrow()
   })
 })
