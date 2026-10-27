@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { requireAuth } from '../middlewares/requireAuth'
 import { ensureProfile, parseProfileInput, updateOwnProfile } from '../services/ProfileService'
+import { isAdminProfileId } from '../config/adminAccess'
 
 const router = Router()
 
@@ -24,6 +25,7 @@ router.get('/me', requireAuth, async (request: Request, response: Response): Pro
       user: { id: request.authUser.id, email: request.authUser.email },
       profile,
       profileReady: true,
+      authorization: { isAdmin: isAdminProfileId(request.authUser.id) },
     })
   } catch {
     response.status(500).json({
