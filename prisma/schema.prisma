@@ -20,6 +20,8 @@ enum ProjectType {
 model Profile {
   /// UUID correspondente a auth.users.id, gerenciado pelo Supabase Auth.
   id        String    @id @db.Uuid
+  fullName  String?   @map("full_name")
+  phone     String?
   projects  Project[]
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

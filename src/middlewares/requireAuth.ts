@@ -31,6 +31,7 @@ export const requireAuth: RequestHandler = async (request, response, next) => {
     request.authUser = {
       id: data.user.id,
       email: data.user.email,
+      userMetadata: data.user.user_metadata,
     }
     next()
   } catch {
