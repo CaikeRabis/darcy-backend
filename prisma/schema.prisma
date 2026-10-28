@@ -40,6 +40,15 @@ enum ResumoAcademicoSection {
   resultados
 }
 
+/// Origem operacional de uma versão textual. Não constitui atribuição de
+/// autoria intelectual; a origem deve ser determinada por operações do
+/// servidor em etapas posteriores.
+enum ResumoAcademicoTextOrigin {
+  ia_assistida
+  pesquisador
+  restauracao
+}
+
 model Profile {
   /// UUID correspondente a auth.users.id, gerenciado pelo Supabase Auth.
   id        String    @id @db.Uuid
@@ -59,6 +68,7 @@ model Project {
   profile                 Profile                  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   resumoAcademicoProgress ResumoAcademicoProgress?
   resumoAcademicoHistory ResumoAcademicoHistoryEvent[]
+  resumoAcademicoTextVersions ResumoAcademicoTextVersion[]
   createdAt               DateTime                 @default(now()) @map("created_at")
   updatedAt               DateTime                 @updatedAt @map("updated_at")
 
@@ -92,9 +102,36 @@ model ResumoAcademicoHistoryEvent {
   summary           String
   contentVersionRef String?                    @map("content_version_ref")
   project           Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  textVersion       ResumoAcademicoTextVersion?
   createdAt         DateTime                   @default(now()) @map("created_at")
 
   @@unique([projectId, sequence])
   @@index([projectId, createdAt])
   @@map("resumo_academico_history_events")
+}
+
+/// Snapshot imutável de um texto em marco semântico do Resumo Acadêmico.
+/// Não é criado por autosave ou por digitação comum.
+model ResumoAcademicoTextVersion {
+  id               String                    @id @default(cuid())
+  projectId        String                    @map("project_id")
+  scopeKey         String                    @map("scope_key")
+  section          ResumoAcademicoSection?
+  versionNumber    Int                       @map("version_number")
+  progressRevision Int                       @map("progress_revision")
+  origin           ResumoAcademicoTextOrigin
+  content          String                    @db.Text
+  contentHash      String                    @map("content_hash") @db.VarChar(64)
+  previousVersionId String?                  @map("previous_version_id")
+  sourceEventId    String?                   @unique @map("source_event_id")
+  project          Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  previousVersion  ResumoAcademicoTextVersion? @relation("ResumoTextVersionLineage", fields: [previousVersionId], references: [id], onDelete: SetNull)
+  nextVersions     ResumoAcademicoTextVersion[] @relation("ResumoTextVersionLineage")
+  sourceEvent      ResumoAcademicoHistoryEvent? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                  @default(now()) @map("created_at")
+
+  @@unique([projectId, scopeKey, versionNumber])
+  @@index([projectId, scopeKey, createdAt])
+  @@index([projectId, progressRevision])
+  @@map("resumo_academico_text_versions")
 }
