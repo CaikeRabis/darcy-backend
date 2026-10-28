@@ -13,6 +13,7 @@
     "test:watch": "vitest --config vitest.config.ts",
     "test:ai:real": "vitest run --config vitest.real.config.ts",
     "test:e2e:resumo-history": "npm run build && node scripts/run-resumo-history-e2e.cjs",
+    "test:e2e:text-versions": "npm run build && node scripts/run-resumo-text-versions-e2e.cjs",
     "experiment:cnpq:dry-run": "ts-node scripts/run-cnpq-evaluation.ts",
     "test:typecheck": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc --noEmit",
