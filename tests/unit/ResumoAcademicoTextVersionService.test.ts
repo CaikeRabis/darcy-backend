@@ -146,6 +146,30 @@ describe('serviço autenticado de versões textuais do Resumo Acadêmico', () =>
     expect(mocks.versionCreate).not.toHaveBeenCalled()
   })
 
+  it('preserva marcos de confirmação distintos mesmo com o mesmo hash', async () => {
+    const created = version({ id: 'version-approval-2', versionNumber: 2, sourceEventId: 'event-2' })
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.versionFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'version-1', projectId: 'project-owned', scopeKey: 'contexto' })
+    mocks.historyFindFirst.mockResolvedValue({ id: 'event-2' })
+    mocks.versionFindFirst.mockResolvedValue({ id: 'version-1', versionNumber: 1 })
+    mocks.versionCreate.mockResolvedValue(created)
+
+    await expect(createResumoAcademicoTextVersion(input({
+      sourceEventId: 'event-2',
+      progressRevision: 4,
+      operation: 'researcher_confirmation',
+    }))).resolves.toEqual(created)
+
+    expect(mocks.versionCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        versionNumber: 2,
+        sourceEventId: 'event-2',
+      }),
+    }))
+  })
+
   it('torna tentativas repetidas com a mesma origem idempotentes', async () => {
     const existing = version({ sourceEventId: 'event-1' })
     mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })

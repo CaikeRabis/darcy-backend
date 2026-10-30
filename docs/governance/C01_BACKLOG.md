@@ -1,0 +1,58 @@
+# DARCY — Backlog único do ciclo C01
+
+Estados permitidos: `PROPOSTA`, `AUTORIZADA`, `EM ANDAMENTO`, `BLOQUEADA`,
+`CONCLUÍDA`, `VALIDADA`.
+
+## C01 — Governança e consolidação dos marcos acadêmicos
+
+Autorização: tarefas locais T1–T6 autorizadas pelo operador. Push, deploy,
+migrations remotas, escrita remota, Alpha/produção e IA real permanecem não
+autorizados.
+
+| ID | Objetivo | Dependências | Prioridade | Estado |
+|---|---|---|---|---|
+| C01-T1 | Auditar branches, worktrees, D4.2, testes e guards | nenhuma | alta | CONCLUÍDA |
+| C01-T2 | Criar governança, contexto, backlog e decisões canônicos | T1 | alta | CONCLUÍDA |
+| C01-T3 | Estabilizar D4.2 no backend | T1 | alta | CONCLUÍDA |
+| C01-T4 | Preparar suíte E2E protegida dos comandos D4.2 | T3 | alta | CONCLUÍDA |
+| C01-T5 | Integrar comandos no frontend com flag desativada | T3 | alta | CONCLUÍDA |
+| C01-T6 | Fechar ciclo, commits locais e proposta C02 | T2–T5 | média | EM ANDAMENTO |
+
+## Critérios de aceite
+
+### C01-T1
+
+Baseline real registrado; discrepâncias históricas explicitadas; nenhum acesso
+remoto ou descarte de alteração local.
+
+### C01-T2
+
+Quatro documentos mestres criados ou reutilizados, referências consistentes,
+sem backlog duplicado, marcados como proposta local pendente de validação humana.
+
+### C01-T3
+
+D4.2 com ownership, revisão, atomicidade, 409/422, idempotência, compatibilidade
+legada, testes, TypeScript, Prisma validate e build aprovados.
+
+### C01-T4
+
+Suíte E2E opt-in preparada, com guards de ambiente, cleanup restrito e nenhum
+teste remoto executado.
+
+### C01-T5
+
+Frontend usa os comandos somente após autosave confirmado; flag ausente preserva
+comportamento anterior; testes, typecheck e build aprovados.
+
+### C01-T6
+
+Commits locais explicitamente stageados, relatório consolidado e proposta C02;
+nenhum push automático.
+
+## Evidências e bloqueios
+
+As evidências detalhadas ficam nos relatórios de cada tarefa. T2 está concluída
+como proposta local, pendente de validação do usuário. T3–T5 estão concluídas
+localmente, sem validação remota. Qualquer operação remota ou publicação exige
+autorização específica.

@@ -1,0 +1,60 @@
+# DARCY — Contexto persistente
+
+## Produto
+
+O DARCY é um sistema de orientação científica que mantém projetos acadêmicos,
+progresso do Resumo Acadêmico, decisões autorais, classificação CNPq e
+interações assistidas por IA.
+
+## Arquitetura vigente
+
+- Backend: Node.js, TypeScript, Express, Prisma e Supabase Auth/PostgreSQL.
+- Frontend: React/TypeScript, autosave serializado e controle otimista de
+  concorrência.
+- Progresso: `ResumoAcademicoProgress` em JSONB com `revision`.
+- Histórico: eventos imutáveis por projeto com `sequence`.
+- Versionamento textual: `ResumoAcademicoTextVersion`, com
+  `versionNumber`, hash, origem operacional e referências de evento.
+- Ambientes: Alpha/produção separados do perfil E2E; guards impedem mistura.
+
+## Estado técnico verificado em 30/10/2026
+
+- Backend: branch `desenvolvimento/maturacao-darcy`, HEAD local
+  `ed92dc0371c80e20da79df8e609e96b4856398be`.
+- Frontend: branch `desenvolvimento/maturacao-darcy`, HEAD local
+  `dd631d518f19cb60f34b32a214aed36ecf81860a`.
+- D4.2: implementação local com comandos autenticados de aprovação/consolidação,
+  suíte E2E preparada e integração frontend opt-in ainda não publicada.
+- Última regressão D4.2: 196 testes backend aprovados, TypeScript, Prisma
+  validate, build e `git diff --check`.
+- Frontend: integração dos comandos protegida pela flag
+  `VITE_RESUMO_MILESTONE_COMMANDS=enabled`; a ausência da flag preserva o fluxo
+  anterior e não envia requisições de marco.
+- Nenhuma migration, escrita remota, deploy, push ou chamada real de IA foi
+  executada no ciclo atual.
+
+## Referências técnicas
+
+- Contrato de histórico: `docs/FASE_4B_1_B_CONTRATO_HISTORICO_RESUMO.md`.
+- Estrutura de versões: `docs/FASE_4B_1_D2_ESTRUTURA_VERSOES_TEXTUAIS.md`.
+- Serviço de versões: `src/services/ResumoAcademicoTextVersionService.ts`.
+- Marcos D4.2: `docs/FASE_4B_1_D4_2_MARCOS_ACADEMICOS.md`.
+- Governança e backlog: diretório `docs/governance/`.
+
+## Limitações conhecidas
+
+A proveniência de textos gerados por IA ainda não é comprovável no backend,
+portanto geração/regeneração não recebe origem `ia_assistida`. A integração dos
+novos comandos no frontend permanece desativada até validação local e posterior
+autorização específica.
+
+## Classificação das evidências
+
+- **VERIFICADO NO CÓDIGO/TESTES:** branches, HEADs, contratos D4.2, 196 testes
+  backend, 71 testes frontend, typechecks, builds e guards locais.
+- **REPORTADO EM DOCUMENTAÇÃO:** migrations D2 previamente aplicadas no E2E;
+  resultados históricos de Playwright e CI.
+- **INFERIDO:** compatibilidade operacional dos novos comandos com o backend
+  remoto enquanto a integração não for executada no E2E.
+- **PENDENTE DE CONFIRMAÇÃO:** execução remota da nova suíte D4.2, ativação da
+  flag no frontend e revisão humana dos documentos mestres.

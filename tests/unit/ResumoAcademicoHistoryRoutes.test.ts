@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   listOwnedResumoAcademicoHistory: vi.fn(),
   getResumoAcademicoProgress: vi.fn(),
   upsertResumoAcademicoProgress: vi.fn(),
+  approveResumoAcademicoSection: vi.fn(),
+  consolidateResumoAcademico: vi.fn(),
   getOwnedResumoScientificContext: vi.fn(),
   generateDarcyResponse: vi.fn(),
   executeQuickAction: vi.fn(),
@@ -27,6 +29,8 @@ vi.mock('../../src/services/ResumoAcademicoService', () => ({
   listOwnedResumoAcademicoHistory: mocks.listOwnedResumoAcademicoHistory,
   getResumoAcademicoProgress: mocks.getResumoAcademicoProgress,
   upsertResumoAcademicoProgress: mocks.upsertResumoAcademicoProgress,
+  approveResumoAcademicoSection: mocks.approveResumoAcademicoSection,
+  consolidateResumoAcademico: mocks.consolidateResumoAcademico,
   getOwnedResumoScientificContext: mocks.getOwnedResumoScientificContext,
 }))
 
@@ -322,5 +326,61 @@ describe('rota autenticada de histórico do Resumo Acadêmico', () => {
 
     expect(read.status).toBe(404)
     expect(write.status).toBe(404)
+  })
+
+  it('mantém aprovação como comando autenticado separado do autosave', async () => {
+    const progress = makeProgress()
+    progress.contexto.texto_sugerido = 'Texto aprovado.'
+    progress.contexto.status = 'aprovado'
+    mocks.approveResumoAcademicoSection.mockResolvedValue({ status: 'saved', progress, revision: 2 })
+
+    const result = await request(
+      '/api/v1/modulos/resumo-academico/project-owned/sections/contexto/approve',
+      'POST',
+      'Bearer token-fake-de-teste',
+      { progress, expectedRevision: 1 },
+    )
+
+    expect(result.status).toBe(200)
+    expect(result.body).toEqual({ ok: true, progress, revision: 2 })
+    expect(mocks.approveResumoAcademicoSection).toHaveBeenCalledWith(
+      'project-owned',
+      '00000000-0000-4000-8000-000000000001',
+      progress,
+      1,
+      'contexto',
+    )
+  })
+
+  it('retorna 409 no comando de consolidação sem expor estado remoto', async () => {
+    mocks.consolidateResumoAcademico.mockResolvedValue({ status: 'conflict' })
+
+    const result = await request(
+      '/api/v1/modulos/resumo-academico/project-owned/consolidate',
+      'POST',
+      'Bearer token-fake-de-teste',
+      { progress: makeProgress(), expectedRevision: 4 },
+    )
+
+    expect(result.status).toBe(409)
+    expect(result.body).toEqual({
+      ok: false,
+      error: {
+        code: 'RESUMO_PROGRESS_REVISION_CONFLICT',
+        message: 'O progresso foi alterado em outra sessão. Recarregue a versão mais recente antes de salvar novamente.',
+      },
+    })
+  })
+
+  it('rejeita comando sem autenticação antes de acionar o serviço', async () => {
+    const result = await request(
+      '/api/v1/modulos/resumo-academico/project-owned/consolidate',
+      'POST',
+      undefined,
+      { progress: makeProgress(), expectedRevision: 0 },
+    )
+
+    expect(result.status).toBe(401)
+    expect(mocks.consolidateResumoAcademico).not.toHaveBeenCalled()
   })
 })

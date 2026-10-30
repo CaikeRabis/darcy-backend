@@ -147,4 +147,11 @@ export const ResumoAcademicoProgressRequestSchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
 }).strict()
 
+/**
+ * Comandos autenticados de marco acadêmico. O cliente envia o estado que
+ * deseja confirmar, mas o tipo do marco é escolhido pela rota do servidor;
+ * não existe campo livre de origem operacional neste contrato.
+ */
+export const ResumoAcademicoMilestoneRequestSchema = ResumoAcademicoProgressRequestSchema
+
 export type ResumoAcademicoState = z.infer<typeof ResumoAcademicoStateSchema>

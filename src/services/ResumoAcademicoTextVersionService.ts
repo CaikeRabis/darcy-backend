@@ -241,17 +241,24 @@ export async function createResumoAcademicoTextVersionInTransaction(
     await ensureSourceEventBelongsToProject(database, project.id, input.sourceEventId)
   }
 
-  const existingByContent = await database.resumoAcademicoTextVersion.findFirst({
-    where: {
-      projectId: project.id,
-      scopeKey: input.scopeKey,
-      contentHash: hash,
-    },
-    orderBy: { versionNumber: 'asc' },
-    select: textVersionSelect,
-  })
+  // Aprovações e consolidações são marcos semânticos. Mesmo que o texto
+  // seja idêntico ao snapshot anterior, um sourceEventId distinto representa
+  // uma confirmação distinta e deve preservar esse marco. Retries continuam
+  // idempotentes pelo bloco de existingByEvent acima.
+  const isSemanticConfirmation = input.operation === 'researcher_confirmation' && Boolean(input.sourceEventId)
+  if (!isSemanticConfirmation) {
+    const existingByContent = await database.resumoAcademicoTextVersion.findFirst({
+      where: {
+        projectId: project.id,
+        scopeKey: input.scopeKey,
+        contentHash: hash,
+      },
+      orderBy: { versionNumber: 'asc' },
+      select: textVersionSelect,
+    })
 
-  if (existingByContent) return toRecord(existingByContent)
+    if (existingByContent) return toRecord(existingByContent)
+  }
 
   const latest = await database.resumoAcademicoTextVersion.findFirst({
     where: { projectId: project.id, scopeKey: input.scopeKey },

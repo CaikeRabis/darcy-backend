@@ -15,15 +15,25 @@
 
 import type { Request, Response } from 'express'
 import { z } from 'zod'
-import { ResumoAcademicoProgressRequestSchema } from '../schemas/resumoAcademico.schema'
 import {
+  ResumoAcademicoMilestoneRequestSchema,
+  ResumoAcademicoProgressRequestSchema,
+} from '../schemas/resumoAcademico.schema'
+import {
+  approveResumoAcademicoSection,
+  consolidateResumoAcademico,
   getResumoAcademicoProgress,
   listOwnedResumoAcademicoHistory,
   upsertResumoAcademicoProgress,
 } from '../services/ResumoAcademicoService'
+import { ResumoAcademicoSection } from '@prisma/client'
 
 const ProjectParamsSchema = z.object({
   projectId: z.string().min(1).max(100),
+}).strict()
+
+const SectionApprovalParamsSchema = ProjectParamsSchema.extend({
+  section: z.nativeEnum(ResumoAcademicoSection),
 }).strict()
 
 const HistoryQuerySchema = z.object({
@@ -81,6 +91,16 @@ function sendRevisionConflict(response: Response): void {
     error: {
       code: 'RESUMO_PROGRESS_REVISION_CONFLICT',
       message: 'O progresso foi alterado em outra sessão. Recarregue a versão mais recente antes de salvar novamente.',
+    },
+  })
+}
+
+function sendInvalidMilestone(response: Response, message: string): void {
+  response.status(422).json({
+    ok: false,
+    error: {
+      code: 'RESUMO_ACADEMICO_MILESTONE_INVALID',
+      message,
     },
   })
 }
@@ -178,6 +198,104 @@ export class ResumoAcademicoController {
 
       if (result.status === 'conflict') {
         sendRevisionConflict(response)
+        return
+      }
+
+      if (result.status === 'invalid_milestone') {
+        sendInvalidMilestone(response, result.message)
+        return
+      }
+
+      response.status(200).json({ ok: true, progress: result.progress, revision: result.revision })
+    } catch {
+      sendProgressOperationError(response)
+    }
+  }
+
+  /**
+   * Comando autenticado de aprovação. O PUT genérico continua reservado ao
+   * autosave; somente esta rota cria o marco textual de aprovação.
+   */
+  static async approveSection(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = SectionApprovalParamsSchema.safeParse(request.params)
+    const bodyResult = ResumoAcademicoMilestoneRequestSchema.safeParse(request.body)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+
+    if (!paramsResult.success || !bodyResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const result = await approveResumoAcademicoSection(
+        paramsResult.data.projectId,
+        profileId,
+        bodyResult.data.progress,
+        bodyResult.data.expectedRevision,
+        paramsResult.data.section,
+      )
+
+      if (result === undefined) {
+        sendProjectNotFound(response)
+        return
+      }
+      if (result.status === 'conflict') {
+        sendRevisionConflict(response)
+        return
+      }
+      if (result.status === 'invalid_milestone') {
+        sendInvalidMilestone(response, result.message)
+        return
+      }
+
+      response.status(200).json({ ok: true, progress: result.progress, revision: result.revision })
+    } catch {
+      sendProgressOperationError(response)
+    }
+  }
+
+  /**
+   * Comando autenticado de consolidação. A geração de IA continua fora deste
+   * comando; ele apenas confirma o texto persistido pelo pesquisador.
+   */
+  static async consolidate(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = ProjectParamsSchema.safeParse(request.params)
+    const bodyResult = ResumoAcademicoMilestoneRequestSchema.safeParse(request.body)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+
+    if (!paramsResult.success || !bodyResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const result = await consolidateResumoAcademico(
+        paramsResult.data.projectId,
+        profileId,
+        bodyResult.data.progress,
+        bodyResult.data.expectedRevision,
+      )
+
+      if (result === undefined) {
+        sendProjectNotFound(response)
+        return
+      }
+      if (result.status === 'conflict') {
+        sendRevisionConflict(response)
+        return
+      }
+      if (result.status === 'invalid_milestone') {
+        sendInvalidMilestone(response, result.message)
         return
       }
 

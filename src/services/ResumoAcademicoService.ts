@@ -29,6 +29,7 @@ import {
   ResumoAcademicoStateSchema,
   type ResumoAcademicoState,
 } from '../schemas/resumoAcademico.schema'
+import { createResumoAcademicoTextVersionInTransaction } from './ResumoAcademicoTextVersionService'
 import type { ScientificClassificationContext } from '../types/darcy.types'
 
 function parsePersistedProgress(progress: Prisma.JsonValue): ResumoAcademicoState {
@@ -43,7 +44,7 @@ function parsePersistedProgress(progress: Prisma.JsonValue): ResumoAcademicoStat
 
 type ResumoDatabaseClient = Pick<
   Prisma.TransactionClient,
-  'project' | 'resumoAcademicoProgress' | 'resumoAcademicoHistoryEvent'
+  'project' | 'resumoAcademicoProgress' | 'resumoAcademicoHistoryEvent' | 'resumoAcademicoTextVersion'
 >
 
 const RESUMO_SECTIONS = [
@@ -105,6 +106,11 @@ export interface ResumoAcademicoProgressSnapshot {
 export type ResumoAcademicoProgressSaveResult =
   | { status: 'saved'; progress: ResumoAcademicoState; revision: number }
   | { status: 'conflict' }
+  | { status: 'invalid_milestone'; message: string }
+
+export type ResumoAcademicoMilestone =
+  | { type: 'section_approval'; section: ResumoAcademicoSection }
+  | { type: 'summary_consolidation' }
 
 async function findOwnedResumoAcademicoProject(
   database: ResumoDatabaseClient,
@@ -228,6 +234,130 @@ export function deriveResumoAcademicoHistoryEvents(
   ))
 }
 
+function milestoneText(
+  progress: ResumoAcademicoState,
+  milestone: ResumoAcademicoMilestone,
+): string | null {
+  if (milestone.type === 'section_approval') {
+    const section = progress[milestone.section]
+    return section.status === 'aprovado' && section.texto_sugerido.trim()
+      ? section.texto_sugerido
+      : null
+  }
+
+  return progress.resumo_completo.trim() ? progress.resumo_completo : null
+}
+
+function persistedMilestoneText(
+  progress: ResumoAcademicoState,
+  milestone: ResumoAcademicoMilestone,
+): string | null {
+  if (milestone.type === 'section_approval') {
+    const text = progress[milestone.section].texto_sugerido.trim()
+    return text ? progress[milestone.section].texto_sugerido : null
+  }
+
+  return progress.resumo_completo.trim() ? progress.resumo_completo : null
+}
+
+function milestoneCandidate(milestone: ResumoAcademicoMilestone): HistoryEventCandidate {
+  if (milestone.type === 'section_approval') {
+    return {
+      type: ResumoAcademicoEventType.secao_aprovada,
+      actor: ResumoAcademicoEventActor.pesquisador,
+      section: milestone.section,
+      summary: `Seção ${SECTION_LABELS[milestone.section]} aprovada pelo pesquisador.`,
+    }
+  }
+
+  return {
+    type: ResumoAcademicoEventType.resumo_consolidado,
+    actor: ResumoAcademicoEventActor.pesquisador,
+    summary: 'Resumo acadêmico consolidado registrado.',
+  }
+}
+
+function isSameMilestoneEvent(
+  event: HistoryEventCandidate,
+  milestone: ResumoAcademicoMilestone,
+): boolean {
+  return milestone.type === 'section_approval'
+    ? event.type === ResumoAcademicoEventType.secao_aprovada && event.section === milestone.section
+    : event.type === ResumoAcademicoEventType.resumo_consolidado
+}
+
+function shouldVersionEvent(
+  event: HistoryEventCandidate,
+  milestone: ResumoAcademicoMilestone | undefined,
+): boolean {
+  return Boolean(milestone) && isSameMilestoneEvent(event, milestone!)
+}
+
+function versionScope(milestone: ResumoAcademicoMilestone): {
+  scopeKey: string
+  section: ResumoAcademicoSection | null
+} {
+  return milestone.type === 'section_approval'
+    ? { scopeKey: `secao.${milestone.section}`, section: milestone.section }
+    : { scopeKey: 'resumo_completo', section: null }
+}
+
+async function persistHistoryEvents(
+  transaction: ResumoDatabaseClient,
+  projectId: string,
+  profileId: string,
+  progress: ResumoAcademicoState,
+  revision: number,
+  eventCandidates: HistoryEventCandidate[],
+  milestone?: ResumoAcademicoMilestone,
+): Promise<void> {
+  const lastEvent = eventCandidates.length > 0
+    ? await transaction.resumoAcademicoHistoryEvent.findFirst({
+      where: { projectId },
+      orderBy: { sequence: 'desc' },
+      select: { sequence: true },
+    })
+    : null
+
+  for (const [index, event] of eventCandidates.entries()) {
+    const persistedEvent = await transaction.resumoAcademicoHistoryEvent.create({
+      data: {
+        projectId,
+        sequence: (lastEvent?.sequence ?? 0) + index + 1,
+        type: event.type,
+        actor: event.actor,
+        ...(event.section ? { section: event.section } : {}),
+        summary: event.summary,
+      },
+      select: { id: true },
+    })
+
+    if (!milestone || !shouldVersionEvent(event, milestone)) continue
+
+    const content = milestoneText(progress, milestone)
+    if (!content) throw new Error('O marco acadêmico não possui texto persistido válido.')
+
+    const scope = versionScope(milestone)
+    const version = await createResumoAcademicoTextVersionInTransaction(transaction, {
+      projectId,
+      profileId,
+      scopeKey: scope.scopeKey,
+      section: scope.section,
+      progressRevision: revision,
+      content,
+      operation: 'researcher_confirmation',
+      sourceEventId: persistedEvent.id,
+    })
+
+    if (!version) throw new Error('Não foi possível associar a versão ao projeto autenticado.')
+
+    await transaction.resumoAcademicoHistoryEvent.update({
+      where: { id: persistedEvent.id },
+      data: { contentVersionRef: version.id },
+    })
+  }
+}
+
 function isSerializableTransactionError(error: unknown): boolean {
   return typeof error === 'object' && error !== null &&
     'code' in error && (error.code === 'P2034' || error.code === 'P2002')
@@ -345,11 +475,68 @@ export async function getOwnedResumoAutoralDecisionContext(
   return `Problema central escolhido pelo pesquisador: ${decisao.escolha}\nJustificativa informada pelo pesquisador: ${decisao.justificativa}`
 }
 
-export async function upsertResumoAcademicoProgress(
+function milestoneValidationError(
+  progress: ResumoAcademicoState,
+  milestone: ResumoAcademicoMilestone | undefined,
+): string | null {
+  if (!milestone) return null
+
+  if (!milestoneText(progress, milestone)) {
+    if (milestone.type === 'section_approval') {
+      return 'A seção aprovada precisa possuir texto persistido e status aprovado.'
+    }
+    return 'A consolidação precisa possuir resumo acadêmico persistido.'
+  }
+
+  return null
+}
+
+function milestoneTransitionError(
+  previous: ResumoAcademicoState,
+  progress: ResumoAcademicoState,
+  milestone: ResumoAcademicoMilestone,
+): string | null {
+  if (milestone.type === 'section_approval') {
+    const expected = {
+      ...previous,
+      [milestone.section]: {
+        ...previous[milestone.section],
+        status: progress[milestone.section].status,
+      },
+    }
+    return isDeepStrictEqual(expected, progress)
+      ? null
+      : 'A aprovação deve confirmar o estado persistido da seção sem alterar outros campos.'
+  }
+
+  const expected = previous
+  return isDeepStrictEqual(expected, progress)
+    ? null
+    : 'A consolidação deve confirmar o resumo já persistido, sem alterar outros campos.'
+}
+
+function eventsForPersistence(
+  previous: ResumoAcademicoState | null,
+  progress: ResumoAcademicoState,
+  milestone?: ResumoAcademicoMilestone,
+): HistoryEventCandidate[] {
+  const events = deriveResumoAcademicoHistoryEvents(previous, progress)
+  if (milestone && !events.some((event) => isSameMilestoneEvent(event, milestone))) {
+    events.push(milestoneCandidate(milestone))
+  }
+
+  return events.sort((left, right) => (
+    HISTORY_EVENT_ORDER[left.type] - HISTORY_EVENT_ORDER[right.type] ||
+    sectionIndex(left.section) - sectionIndex(right.section)
+  ))
+}
+
+async function upsertResumoAcademicoProgressInternal(
   projectId: string,
   profileId: string,
   progress: ResumoAcademicoState,
   expectedRevision: number,
+  milestone?: ResumoAcademicoMilestone,
 ): Promise<ResumoAcademicoProgressSaveResult | undefined> {
   for (let attempt = 0; attempt < MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS; attempt += 1) {
     try {
@@ -357,40 +544,38 @@ export async function upsertResumoAcademicoProgress(
         const project = await findOwnedResumoAcademicoProject(transaction, projectId, profileId)
         if (!project) return undefined
 
+        const invalidMilestone = milestoneValidationError(progress, milestone)
+        if (invalidMilestone) return { status: 'invalid_milestone', message: invalidMilestone }
+
         const existing = await transaction.resumoAcademicoProgress.findUnique({
           where: { projectId: project.id },
           select: { progress: true, revision: true },
         })
 
         if (!existing) {
+          if (milestone) {
+            return {
+              status: 'invalid_milestone',
+              message: 'O marco acadêmico requer texto previamente persistido por autosave.',
+            }
+          }
+
           if (expectedRevision !== 0) return { status: 'conflict' as const }
 
           const persistedProgress = await transaction.resumoAcademicoProgress.create({
             data: { projectId: project.id, progress, revision: 1 },
             select: { progress: true, revision: true },
           })
-          const eventCandidates = deriveResumoAcademicoHistoryEvents(null, progress)
-
-          if (eventCandidates.length > 0) {
-            const lastEvent = await transaction.resumoAcademicoHistoryEvent.findFirst({
-              where: { projectId: project.id },
-              orderBy: { sequence: 'desc' },
-              select: { sequence: true },
-            })
-
-            for (const [index, event] of eventCandidates.entries()) {
-              await transaction.resumoAcademicoHistoryEvent.create({
-                data: {
-                  projectId: project.id,
-                  sequence: (lastEvent?.sequence ?? 0) + index + 1,
-                  type: event.type,
-                  actor: event.actor,
-                  ...(event.section ? { section: event.section } : {}),
-                  summary: event.summary,
-                },
-              })
-            }
-          }
+          const eventCandidates = eventsForPersistence(null, progress, milestone)
+          await persistHistoryEvents(
+            transaction,
+            project.id,
+            profileId,
+            progress,
+            persistedProgress.revision,
+            eventCandidates,
+            milestone,
+          )
 
           return {
             status: 'saved' as const,
@@ -402,7 +587,19 @@ export async function upsertResumoAcademicoProgress(
         if (existing.revision !== expectedRevision) return { status: 'conflict' as const }
 
         const previous = parsePersistedProgress(existing.progress)
-        if (isDeepStrictEqual(previous, progress)) {
+        if (milestone) {
+          if (!persistedMilestoneText(previous, milestone)) {
+            return {
+              status: 'invalid_milestone',
+              message: 'O marco acadêmico requer texto previamente persistido por autosave.',
+            }
+          }
+
+          const invalidTransition = milestoneTransitionError(previous, progress, milestone)
+          if (invalidTransition) return { status: 'invalid_milestone', message: invalidTransition }
+        }
+        const hasEffectiveChange = !isDeepStrictEqual(previous, progress)
+        if (!hasEffectiveChange && !milestone) {
           return { status: 'saved' as const, progress: previous, revision: existing.revision }
         }
 
@@ -412,31 +609,19 @@ export async function upsertResumoAcademicoProgress(
         })
         if (updated.count !== 1) return { status: 'conflict' as const }
 
-        const eventCandidates = deriveResumoAcademicoHistoryEvents(previous, progress)
-        const lastEvent = eventCandidates.length > 0
-          ? await transaction.resumoAcademicoHistoryEvent.findFirst({
-            where: { projectId: project.id },
-            orderBy: { sequence: 'desc' },
-            select: { sequence: true },
-          })
-          : null
+        const nextRevision = expectedRevision + 1
+        const eventCandidates = eventsForPersistence(previous, progress, milestone)
+        await persistHistoryEvents(
+          transaction,
+          project.id,
+          profileId,
+          progress,
+          nextRevision,
+          eventCandidates,
+          milestone,
+        )
 
-        if (eventCandidates.length > 0) {
-          for (const [index, event] of eventCandidates.entries()) {
-            await transaction.resumoAcademicoHistoryEvent.create({
-              data: {
-                projectId: project.id,
-                sequence: (lastEvent?.sequence ?? 0) + index + 1,
-                type: event.type,
-                actor: event.actor,
-                ...(event.section ? { section: event.section } : {}),
-                summary: event.summary,
-              },
-            })
-          }
-        }
-
-        return { status: 'saved' as const, progress, revision: expectedRevision + 1 }
+        return { status: 'saved' as const, progress, revision: nextRevision }
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
     } catch (error) {
       if (!isSerializableTransactionError(error) || attempt === MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS - 1) {
@@ -446,6 +631,46 @@ export async function upsertResumoAcademicoProgress(
   }
 
   throw new Error('A persistência do progresso excedeu as tentativas de serialização.')
+}
+
+export async function upsertResumoAcademicoProgress(
+  projectId: string,
+  profileId: string,
+  progress: ResumoAcademicoState,
+  expectedRevision: number,
+): Promise<ResumoAcademicoProgressSaveResult | undefined> {
+  return upsertResumoAcademicoProgressInternal(projectId, profileId, progress, expectedRevision)
+}
+
+export async function approveResumoAcademicoSection(
+  projectId: string,
+  profileId: string,
+  progress: ResumoAcademicoState,
+  expectedRevision: number,
+  section: ResumoAcademicoSection,
+): Promise<ResumoAcademicoProgressSaveResult | undefined> {
+  return upsertResumoAcademicoProgressInternal(
+    projectId,
+    profileId,
+    progress,
+    expectedRevision,
+    { type: 'section_approval', section },
+  )
+}
+
+export async function consolidateResumoAcademico(
+  projectId: string,
+  profileId: string,
+  progress: ResumoAcademicoState,
+  expectedRevision: number,
+): Promise<ResumoAcademicoProgressSaveResult | undefined> {
+  return upsertResumoAcademicoProgressInternal(
+    projectId,
+    profileId,
+    progress,
+    expectedRevision,
+    { type: 'summary_consolidation' },
+  )
 }
 
 /**
