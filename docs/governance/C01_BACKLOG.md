@@ -16,7 +16,7 @@ autorizados.
 | C01-T3 | Estabilizar D4.2 no backend | T1 | alta | CONCLUÍDA |
 | C01-T4 | Preparar suíte E2E protegida dos comandos D4.2 | T3 | alta | CONCLUÍDA |
 | C01-T5 | Integrar comandos no frontend com flag desativada | T3 | alta | CONCLUÍDA |
-| C01-T6 | Fechar ciclo, commits locais e proposta C02 | T2–T5 | média | EM ANDAMENTO |
+| C01-T6 | Fechar ciclo, commits locais e proposta C02 | T2–T5 | média | CONCLUÍDA |
 
 ## Critérios de aceite
 

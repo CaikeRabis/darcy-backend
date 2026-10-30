@@ -19,10 +19,9 @@ interações assistidas por IA.
 
 ## Estado técnico verificado em 30/10/2026
 
-- Backend: branch `desenvolvimento/maturacao-darcy`, HEAD local
-  `ed92dc0371c80e20da79df8e609e96b4856398be`.
-- Frontend: branch `desenvolvimento/maturacao-darcy`, HEAD local
-  `dd631d518f19cb60f34b32a214aed36ecf81860a`.
+- Baseline inicial: backend `ed92dc0`, frontend `dd631d5`.
+- Estado atual após C01: backend `1caeb99`, frontend `57f185f`, ambos na
+  branch `desenvolvimento/maturacao-darcy`, com commits locais não publicados.
 - D4.2: implementação local com comandos autenticados de aprovação/consolidação,
   suíte E2E preparada e integração frontend opt-in ainda não publicada.
 - Última regressão D4.2: 196 testes backend aprovados, TypeScript, Prisma
