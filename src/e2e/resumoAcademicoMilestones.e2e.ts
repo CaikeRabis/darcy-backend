@@ -195,6 +195,10 @@ export async function runResumoAcademicoMilestonesE2E(): Promise<ResumoAcademico
     const summarySnapshot = getProgressSnapshot(summaryAutosave.body)
     assertCondition(summaryAutosave.status === 200 && summarySnapshot?.revision === 4, 'Autosave do resumo não confirmou revisão 4.')
 
+    const beforeConsolidationHistoryResponse = await requestApi(`${progressPath}/history?limit=100`, tokenA)
+    const beforeConsolidationHistory = getHistoryEvents(beforeConsolidationHistoryResponse.body)
+    assertCondition(beforeConsolidationHistoryResponse.status === 200 && beforeConsolidationHistory, 'Não foi possível preparar a verificação de consolidação.')
+
     const [consolidationA, consolidationB] = await Promise.all([
       requestApi(`${progressPath}/consolidate`, tokenA, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: consolidated, expectedRevision: 4 }) }),
       requestApi(`${progressPath}/consolidate`, tokenA, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: consolidated, expectedRevision: 4 }) }),
@@ -205,6 +209,7 @@ export async function runResumoAcademicoMilestonesE2E(): Promise<ResumoAcademico
     const historyResponse = await requestApi(`${progressPath}/history?limit=100`, tokenA)
     const history = getHistoryEvents(historyResponse.body)
     assertCondition(historyResponse.status === 200 && history, 'Não foi possível recuperar o histórico final.')
+    assertCondition(history.length === beforeConsolidationHistory.length + 1, 'O conflito de consolidação criou evento adicional.')
     const versionedMilestones = history.filter((event) => (
       (event.type === 'secao_aprovada' || event.type === 'resumo_consolidado')
       && event.contentVersionRef !== null
