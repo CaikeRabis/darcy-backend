@@ -35,3 +35,39 @@
   `docs/governance/`, referenciados pelo frontend.
 - Justificativa: evitar dois backlogs oficiais ou instruções divergentes.
 - Consequência: a governança permanece proposta até revisão humana explícita.
+
+## D-2026-10-30-05 — Aprovação concentrada por ciclo
+
+- Tarefa: C01-T6
+- Decisão: reunir commits locais tecnicamente validados em uma proposta única
+  de publicação ao final do ciclo, separando repositório, branch e conjunto de
+  commits.
+- Justificativa: reduzir aprovações fragmentadas sem ampliar autorização.
+- Consequência: nenhum push ocorre antes da aprovação humana explícita do
+  relatório consolidado.
+
+## D-2026-10-30-06 — Estados independentes de publicação
+
+- Tarefa: C01-T6
+- Decisão: registrar separadamente validação local, aprovação humana, publicação
+  no GitHub, resultado do CI e validação E2E.
+- Justificativa: conclusão local não equivale a homologação ou publicação.
+- Consequência: cada gate permanece pendente até sua própria evidência.
+
+## D-2026-10-30-07 — Retomada baseada em evidência
+
+- Tarefa: C01-T1 / C01-T6
+- Decisão: toda sessão inicia comparando backlog, commits e worktrees reais.
+- Justificativa: impedir repetição de implementações e detectar divergências
+  entre documentação e código.
+- Consequência: conflitos documentais são registrados antes de continuar.
+
+## D-2026-10-30-08 — Gate de regressões críticas
+
+- Tarefa: C01-T6
+- Decisão: falhas de autenticação, ownership, concorrência ou persistência
+  bloqueiam publicação de alterações dependentes.
+- Justificativa: são riscos diretamente relacionados à segurança e integridade
+  dos dados.
+- Consequência: a tarefa é corrigida no escopo autorizado ou marcada como
+  bloqueada, sem contornar guards.

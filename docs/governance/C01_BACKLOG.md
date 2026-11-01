@@ -47,12 +47,25 @@ comportamento anterior; testes, typecheck e build aprovados.
 
 ### C01-T6
 
-Commits locais explicitamente stageados, relatório consolidado e proposta C02;
-nenhum push automático.
+Commits locais explicitamente stageados, relatório consolidado, proposta
+consolidada de publicação por repositório e proposta C02; nenhum push automático.
+
+## Estados independentes de publicação
+
+Os estados abaixo não substituem o estado da tarefa e devem ser registrados
+separadamente:
+
+| Escopo | Validação local | Aprovação humana | Publicação GitHub | CI | Validação E2E |
+|---|---|---|---|---|---|
+| Backend C01 (`d05e561`, conjunto de 3 commits) | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | NÃO EXECUTADO PARA ESTES COMMITS | PENDENTE |
+| Frontend C01 (`57f185f`, conjunto de 1 commit) | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | NÃO EXECUTADO PARA ESTE COMMIT | PENDENTE |
+
+Conclusão local, aprovação humana, publicação, CI e E2E são gates distintos.
+Nenhum resultado deve ser promovido automaticamente ao estado seguinte.
 
 ## Evidências e bloqueios
 
 As evidências detalhadas ficam nos relatórios de cada tarefa. T2 está concluída
 como proposta local, pendente de validação do usuário. T3–T5 estão concluídas
-localmente, sem validação remota. Qualquer operação remota ou publicação exige
-autorização específica.
+localmente, sem validação remota. A publicação permanece bloqueada até aprovação
+humana explícita por repositório, branch e conjunto de commits.

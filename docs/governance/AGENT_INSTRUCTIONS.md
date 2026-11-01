@@ -37,6 +37,11 @@ Antes de considerar uma tarefa concluída, conferir os arquivos alterados,
 testes pertinentes, typecheck, build e verificações estáticas aplicáveis.
 Distinguir claramente evidência local, remota, documentada, inferida e pendente.
 
+Falhas de autenticação, ownership, concorrência ou persistência são regressões
+críticas: impedem a publicação de alterações dependentes. A frente deve ser
+corrigida dentro do escopo autorizado ou marcada como bloqueada, com o motivo
+registrado.
+
 ## Commits e pushes
 
 Commits locais são permitidos quando a tarefa os autorizar e os testes estiverem
@@ -47,7 +52,17 @@ Push exige aprovação explícita posterior, identificando repositório, branch 
 HEAD/conjunto de commits. Não fazer force-push, merge destrutivo ou alteração de
 branches protegidas.
 
+Ao final de um ciclo, reunir os commits locais tecnicamente validados em uma
+proposta consolidada de publicação. O relatório deve pedir aprovação humana
+separadamente para cada repositório, branch e conjunto de commits, preferindo
+um único relatório consolidado. Nenhum push pode ocorrer antes dessa aprovação.
+
 ## Continuidade e interrupção
+
+Ao iniciar uma sessão, comparar o backlog, os commits e o worktree reais. Retomar
+somente tarefas autorizadas e pendentes; não repetir implementações já validadas.
+Se documentação e código divergirem, registrar o conflito e utilizar as
+evidências reais antes de continuar.
 
 Após uma tarefa concluída, avançar para a próxima tarefa local elegível do ciclo
 sem solicitar microaprovações. Se houver bloqueio, registrar causa e continuar

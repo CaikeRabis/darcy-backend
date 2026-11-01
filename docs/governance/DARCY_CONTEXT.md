@@ -20,8 +20,9 @@ interações assistidas por IA.
 ## Estado técnico verificado em 30/10/2026
 
 - Baseline inicial: backend `ed92dc0`, frontend `dd631d5`.
-- Estado atual após C01: backend `1caeb99`, frontend `57f185f`, ambos na
-  branch `desenvolvimento/maturacao-darcy`, com commits locais não publicados.
+- Estado atual após C01: backend `d05e561` (conjunto local de três commits),
+  frontend `57f185f` (conjunto local de um commit), ambos na branch
+  `desenvolvimento/maturacao-darcy`, com commits locais não publicados.
 - D4.2: implementação local com comandos autenticados de aprovação/consolidação,
   suíte E2E preparada e integração frontend opt-in ainda não publicada.
 - Última regressão D4.2: 196 testes backend aprovados, TypeScript, Prisma
@@ -31,6 +32,19 @@ interações assistidas por IA.
   anterior e não envia requisições de marco.
 - Nenhuma migration, escrita remota, deploy, push ou chamada real de IA foi
   executada no ciclo atual.
+
+## Gates independentes de publicação
+
+- **Validação local:** concluída para os conjuntos de commits do backend e do
+  frontend.
+- **Aprovação humana:** pendente.
+- **Publicação no GitHub:** não realizada.
+- **Resultado do CI:** não disponível para os commits locais não publicados.
+- **Validação E2E:** pendente; a suíte está preparada, mas não foi executada
+  remotamente.
+
+Uma proposta de publicação deve reunir os commits de cada repositório, indicar a
+branch e solicitar aprovação explícita antes de qualquer push.
 
 ## Referências técnicas
 
@@ -56,4 +70,15 @@ autorização específica.
 - **INFERIDO:** compatibilidade operacional dos novos comandos com o backend
   remoto enquanto a integração não for executada no E2E.
 - **PENDENTE DE CONFIRMAÇÃO:** execução remota da nova suíte D4.2, ativação da
-  flag no frontend e revisão humana dos documentos mestres.
+  flag no frontend, revisão humana dos documentos mestres e publicação dos
+  commits locais.
+
+## Retomada e regressões críticas
+
+Cada nova sessão deve comparar este contexto com o backlog, os HEADs e os
+worktrees reais antes de retomar tarefas. Divergências entre documentação e
+código devem ser registradas e resolvidas pela evidência real.
+
+Falhas de autenticação, ownership, concorrência ou persistência bloqueiam a
+publicação de qualquer alteração dependente até correção autorizada ou registro
+formal de bloqueio.
