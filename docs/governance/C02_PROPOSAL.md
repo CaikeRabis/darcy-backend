@@ -24,7 +24,7 @@ uma eventual consolidação posterior, sem ativar Alpha/produção por padrão.
 |---|---|---|
 | C02-T1 | CONCLUÍDA | Baseline real reconciliado; C02 autorizado sem backlog duplicado |
 | C02-T2 | VALIDADA | E2E PostgreSQL: aprovação, consolidação, conflitos, ownership e cleanup |
-| C02-T3 | VALIDADA | Playwright protegido: flag local, comando POST, persistência e cleanup |
+| C02-T3 | VALIDADA COM RESSALVA | Playwright aprovado; reexecução posterior do observador expirou |
 | C02-T4 | CONCLUÍDA | Diagnóstico e plano de histórico/restauração registrados |
 | C02-T5 | CONCLUÍDA | Regressões, documentação e commits locais concluídos |
 
@@ -54,5 +54,7 @@ separada. Alpha e produção permanecem fora do escopo.
 - C02-T3: autenticação Playwright aprovada, autosaves confirmados, comando
   `POST /sections/contexto/approve` `200`, GET do estado aprovado, PUT posterior
   `200` e cleanup `204/404`. A flag foi aplicada somente ao processo frontend
-  local.
+  local. Uma reexecução posterior, feita para validar a posição de uma assertion,
+  expirou no observador do Playwright após o backend registrar o POST `200`; não
+  houve nova tentativa nem alteração de produção.
 - Nenhuma migration, IA real, Alpha/produção ou deploy foi utilizado.

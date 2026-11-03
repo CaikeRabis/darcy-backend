@@ -30,21 +30,24 @@ interações assistidas por IA.
 - Frontend: integração dos comandos protegida pela flag
   `VITE_RESUMO_MILESTONE_COMMANDS=enabled`; a ausência da flag preserva o fluxo
   anterior e não envia requisições de marco.
-- Nenhuma migration, escrita remota, E2E remoto, deploy ou chamada real de IA
+- Nenhuma migration, deploy, chamada real de IA ou operação em Alpha/produção
   foi executada no ciclo atual.
 - C02-T2 e C02-T3 foram executadas exclusivamente no `darcy-e2e`, com projetos
-  sintéticos e cleanup confirmado. A flag frontend permaneceu local.
+  sintéticos e cleanup confirmado. As escritas remotas ficaram limitadas aos
+  recursos sintéticos autorizados; a flag frontend permaneceu local.
 
 ## Gates independentes de publicação
 
 - **Validação local:** concluída para os conjuntos de commits do backend e do
   frontend.
 - **Aprovação humana:** concluída para os dois repositórios.
-- **Publicação no GitHub:** concluída nas branches de desenvolvimento.
-- **Resultado do CI:** Backend CI #24 aprovado para `48bd69e`; CI do frontend
-  não verificável pelo endpoint público consultado.
-- **Validação E2E:** pendente; a suíte está preparada, mas não foi executada
-  remotamente.
+- **Publicação no GitHub:** C01 permanece publicado; os commits C02 estão
+  apenas locais e aguardam aprovação humana específica para push.
+- **Resultado do CI:** Backend CI #24 aprovado para `48bd69e`; não há CI remoto
+  disponível para os commits C02 ainda não publicados.
+- **Validação E2E:** concluída para C02-T2 e para uma execução aprovada de
+  C02-T3; uma reexecução posterior de observabilidade expirou no observador
+  do Playwright após o backend registrar o POST 200, sem nova tentativa.
 
 O registro de publicação deve preservar o conjunto de commits, o repositório,
 a branch e o resultado do CI; novos pushes continuam exigindo aprovação
@@ -54,8 +57,11 @@ explícita.
 
 - C02-T1: concluída, baseline e autorização reconciliados.
 - C02-T2: validada com PostgreSQL E2E real e cleanup `204/404`.
-- C02-T3: validada com Playwright protegido; comando de aprovação `POST` e
-  persistência posterior confirmados.
+- C02-T3: validada com Playwright protegido; comando de aprovação `POST`,
+  persistência posterior e cleanup `204/404` confirmados. Uma execução
+  posterior, feita apenas para validar a posição de uma assertion, expirou
+  aguardando o observador do comando; não foi usada para substituir a evidência
+  aprovada.
 - C02-T4: concluída como análise; restauração permanece não implementada.
 - C02-T5: concluída localmente; commits preparados, sem push automático.
 
@@ -82,9 +88,8 @@ autorização específica.
   resultados históricos de Playwright e CI.
 - **INFERIDO:** compatibilidade operacional dos novos comandos com o backend
   remoto enquanto a integração não for executada no E2E.
-- **PENDENTE DE CONFIRMAÇÃO:** execução remota da nova suíte D4.2, ativação da
-  flag no frontend, revisão humana dos documentos mestres e publicação dos
-  commits locais.
+- **PENDENTE DE CONFIRMAÇÃO:** ativação da flag no frontend em uma publicação,
+  revisão humana dos documentos mestres e publicação dos commits locais.
 
 ## Retomada e regressões críticas
 
