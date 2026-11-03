@@ -2,8 +2,8 @@
 
 Estado: `AUTORIZADA` em 03/11/2026, conforme instrução única de ativação.
 
-Estado de execução: T1–T4 concluídas localmente; T5 em consolidação local,
-sem push automático.
+Estado de execução: T1–T5 concluídas localmente; commits C02 preparados sem
+push automático.
 
 ## Objetivo
 
@@ -26,7 +26,7 @@ uma eventual consolidação posterior, sem ativar Alpha/produção por padrão.
 | C02-T2 | VALIDADA | E2E PostgreSQL: aprovação, consolidação, conflitos, ownership e cleanup |
 | C02-T3 | VALIDADA | Playwright protegido: flag local, comando POST, persistência e cleanup |
 | C02-T4 | CONCLUÍDA | Diagnóstico e plano de histórico/restauração registrados |
-| C02-T5 | EM ANDAMENTO | Regressões locais concluídas; consolidação documental pendente |
+| C02-T5 | CONCLUÍDA | Regressões, documentação e commits locais concluídos |
 
 ## Critérios de aceite
 

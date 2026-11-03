@@ -57,7 +57,7 @@ explícita.
 - C02-T3: validada com Playwright protegido; comando de aprovação `POST` e
   persistência posterior confirmados.
 - C02-T4: concluída como análise; restauração permanece não implementada.
-- C02-T5: em consolidação local, sem push automático.
+- C02-T5: concluída localmente; commits preparados, sem push automático.
 
 ## Referências técnicas
 
