@@ -98,8 +98,8 @@ O plano canônico está em `C03_PROPOSAL.md`; não foi criado backlog paralelo.
 
 | Repositório | Validação local | Aprovação humana | Publicação GitHub | CI | E2E |
 |---|---|---|---|---|---|
-| Backend | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | PENDENTE | PENDENTE |
-| Frontend | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | PENDENTE | PENDENTE |
+| Backend | CONCLUÍDA | APROVADA | PUBLICADO (`ae9801a`) | APROVADO — #41651698301 | GO COM RESSALVA |
+| Frontend | CONCLUÍDA | APROVADA | PUBLICADO (`3727ace`) | APROVADO — #41651696497 | GO COM RESSALVA |
 
 Falhas de autenticação, ownership, concorrência ou persistência bloqueiam a
 publicação de alterações dependentes. A flag do histórico permanece desativada
@@ -107,3 +107,33 @@ até aprovação e validação integrada.
 
 O gate E2E complementar resultou em **GO COM RESSALVA**: backend aprovado;
 frontend observado no painel real, porém com assertion de fixture pendente.
+
+### Registro de publicação do C03 — 03/11/2026
+
+- Backend: `7d09fb97be09d6684771d06d6a3525fdf7ed3363`,
+  `f6dce45958ff37190e8ca8fc2970dabcc49478d0`,
+  `d2f0d508b1aa3d3a9a918bed0cdf4721e1a3c4d6` e
+  `ae9801a6279e67d0986006d870035ece503a5cd8` publicados em
+  `origin/desenvolvimento/maturacao-darcy`; Backend CI #41651698301 aprovado.
+- Frontend: `3727aceab8494932eaeab6704ff00d3e44711491` publicado na mesma
+  branch; Frontend CI #41651696497 aprovado.
+- A flag `VITE_RESUMO_HISTORY_ENABLED` permanece desativada por padrão; não
+  houve ativação em Alpha/produção, migration, deploy ou C04.
+- Atualizações deste registro permanecem locais, sem push adicional.
+
+## C04 — Estabilização e restauração segura
+
+O plano canônico está em `C04_PROPOSAL.md`; decisões em `C04_DECISIONS.md`.
+
+| ID | Objetivo | Estado | Evidência |
+|---|---|---|---|
+| C04-T1 | Estabilizar histórico e fixture | VALIDADA LOCALMENTE | Ressalva `contentVersionRef` preservada; parser e estados locais revisados |
+| C04-T2 | Serviço autenticado de restauração | VALIDADA LOCALMENTE | POST transacional, ownership, 409 e idempotência |
+| C04-T3 | Integração frontend opt-in | VALIDADA LOCALMENTE | Confirmação explícita, preservação e hidratação da revisão |
+| C04-T4 | Testes e preparação E2E | VALIDADA LOCALMENTE | Regressões aprovadas; nenhum teste remoto executado |
+| C04-T5 | Governança e encerramento | EM ANDAMENTO | Documentos e proposta C05 preparados |
+
+O C04 permanece não publicado e não homologado. A migration local
+`20261103120000_resumo_academico_restoration_event` é aditiva e não foi aplicada
+a nenhum banco. Push, deploy, Alpha/produção, IA paga e C05 continuam fora do
+escopo autorizado.

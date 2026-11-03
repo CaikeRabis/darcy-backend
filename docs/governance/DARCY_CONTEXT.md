@@ -20,7 +20,8 @@ interações assistidas por IA.
 ## Estado técnico verificado em 03/11/2026
 
 - Baseline inicial do C03: backend `7971636`, frontend `f3d5c1b` (C02
-  publicado); os novos commits C03 permanecem locais.
+  publicado); os commits C03 foram posteriormente publicados conforme o
+  registro abaixo.
 - Estado publicado anterior ao C03: backend `7971636` e frontend `f3d5c1b`,
   ambos na branch `desenvolvimento/maturacao-darcy`.
 - D4.2: implementação local com comandos autenticados de aprovação/consolidação,
@@ -46,12 +47,14 @@ interações assistidas por IA.
 
 - **Validação local:** concluída para os conjuntos de commits do backend e do
   frontend.
-- **Aprovação humana:** C01 e C02 já aprovados/publicados; C03 ainda aguarda
-  autorização específica por repositório, branch e conjunto de commits.
-- **Publicação no GitHub:** C01/C02 permanecem publicados; C03 está somente
-  local nos commits `7d09fb9` (backend) e `3727ace` (frontend).
-- **Resultado do CI:** C01/C02 preservam os resultados já registrados; não há
-  CI remoto para os commits C03 antes do push.
+- **Aprovação humana:** C01, C02 e C03 aprovados/publicados nos conjuntos
+  autorizados por repositório e branch.
+- **Publicação no GitHub:** C03 publicado em
+  `origin/desenvolvimento/maturacao-darcy`: backend até `ae9801a` e frontend
+  em `3727ace`.
+- **Resultado do CI:** Backend CI #41651698301 e Frontend CI #41651696497
+  concluídos com sucesso; as anotações de depreciação do Node.js/runner não
+  foram bloqueadoras.
 - **Validação E2E:** C03 teve backend aprovado com concorrência `200/409`,
   recuperação `200`, ownership `404`, paginação e cleanup `204/404`. A UI
   alcançou o painel real e a comparação, mas a assertion final de
@@ -84,11 +87,33 @@ explícita.
   ausente/desativada.
 - T4: concluída localmente; comparação de duas versões somente leitura,
   incluindo linhas adicionadas/removidas e textos idênticos.
-- T5: concluída localmente; commits rastreáveis e proposta consolidada de
-  publicação preparada.
-- C03 não está publicado, não está homologado e não autoriza o início de C04.
+- T5: concluída com publicação controlada dos commits autorizados e CI verde;
+  a ressalva E2E visual permanece registrada.
+- C03 está publicado na branch de desenvolvimento, mas não está homologado
+  para Alpha/produção; a ativação posterior do C04 é registrada na seção
+  correspondente abaixo.
 - A flag de histórico permanece desativada no Alpha; a ressalva visual deve
   ser resolvida antes da habilitação em produção.
+
+## Estado do ciclo C04
+
+- C04-T1 a C04-T4 foram implementadas e validadas localmente; C04-T5 está em
+  andamento documental.
+- Backend: comando autenticado de restauração com `expectedRevision`,
+  `operationId`, ownership, transação serializável, evento `restauracao`, nova
+  versão e linhagem `previousVersionId`.
+- Frontend: seleção única para restauração, confirmação explícita, bloqueio de
+  conflito/autosave pendente e hidratação da revisão devolvida pelo backend.
+- Migration local `20261103120000_resumo_academico_restoration_event` criada
+  somente para o enum de evento; não aplicada em E2E, Alpha ou produção.
+- Regressões: backend 204 testes; frontend 74 testes; TypeScript,
+  test-typecheck, builds, Prisma validate, typecheck E2E e `git diff --check`
+  aprovados.
+- Nenhum push, deploy, teste E2E remoto, migration remota ou chamada paga de IA
+  foi executado no C04.
+- A assertion visual de `contentVersionRef` do C03 continua uma ressalva
+  histórica; estados vazio/erro e fluxo legado ainda requerem homologação
+  visual. C05 foi apenas proposto e não iniciado.
 
 ## Referências técnicas
 
@@ -114,9 +139,11 @@ autorização específica.
   resultados históricos de Playwright e CI.
 - **INFERIDO:** compatibilidade operacional dos novos comandos com o backend
   remoto enquanto a integração não for executada no E2E.
-- **PENDENTE DE CONFIRMAÇÃO:** ativação da flag no frontend em uma publicação,
-  execução E2E específica de C03, revisão humana dos documentos mestres,
-  publicação dos commits locais e CI correspondente.
+- **PENDENTE DE CONFIRMAÇÃO:** ativação da flag no frontend em uma publicação
+  Alpha (não autorizada), correção da assertion/fixture de `contentVersionRef`,
+  homologação visual dos estados vazio/erro e do fluxo legado com flag
+  desativada. As atualizações documentais pós-publicação são locais e ainda
+  não foram enviadas ao GitHub.
 
 ## Retomada e regressões críticas
 

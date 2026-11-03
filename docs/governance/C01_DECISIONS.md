@@ -137,3 +137,25 @@
   `contentVersionRef` não foi preparado no fixture sintético da execução.
 - Consequência: publicação pode ser considerada somente **GO COM RESSALVA**,
   com flag desativada até estabilização da cobertura visual.
+
+## D-2026-11-03-16 — Publicação controlada do C03
+
+- Tarefa: C03
+- Decisão: publicar exclusivamente os quatro commits autorizados do backend
+  (`7d09fb97be09d6684771d06d6a3525fdf7ed3363`,
+  `f6dce45958ff37190e8ca8fc2970dabcc49478d0`,
+  `d2f0d508b1aa3d3a9a918bed0cdf4721e1a3c4d6` e
+  `ae9801a6279e67d0986006d870035ece503a5cd8`) e o commit frontend
+  `3727aceab8494932eaeab6704ff00d3e44711491` na branch
+  `desenvolvimento/maturacao-darcy`.
+- Evidência: pushes concluídos sem force-push; Backend CI #41651698301 e
+  Frontend CI #41651696497 concluídos com sucesso.
+- Consequência: C03 está publicado na branch de desenvolvimento com parecer
+  **GO COM RESSALVA**. A flag `VITE_RESUMO_HISTORY_ENABLED` continua
+  desativada por padrão e a funcionalidade não está autorizada para Alpha ou
+  produção.
+- Ressalvas preservadas: a assertion visual de `contentVersionRef` falhou
+  porque o fixture cria eventos sem o vínculo esperado; estados vazio/erro e
+  fluxo legado não foram homologados visualmente nesta rodada. O C04 não foi
+  iniciado. Atualizações documentais posteriores a este push são locais e
+  não foram publicadas automaticamente.

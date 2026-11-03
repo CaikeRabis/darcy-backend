@@ -53,23 +53,33 @@ autorais.
   `resumo-academico` quando a flag opt-in está habilitada; a comparação é
   somente leitura, sem restauração ou merge.
 
-## Gates e commits locais
+## Gates e publicação
 
 | Repositório | Branch | Validação local | Aprovação humana | Publicação GitHub | CI | Validação E2E |
 |---|---|---|---|---|---|---|
-| Backend | `desenvolvimento/maturacao-darcy` | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | NÃO VERIFICADO PARA C03 | PENDENTE |
-| Frontend | `desenvolvimento/maturacao-darcy` | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | NÃO VERIFICADO PARA C03 | PENDENTE |
+| Backend | `desenvolvimento/maturacao-darcy` | CONCLUÍDA | APROVADA | PUBLICADO (`ae9801a`) | APROVADO — Backend CI #41651698301 | GO COM RESSALVA |
+| Frontend | `desenvolvimento/maturacao-darcy` | CONCLUÍDA | APROVADA | PUBLICADO (`3727ace`) | APROVADO — Frontend CI #41651696497 | GO COM RESSALVA |
 
-Commits locais preparados:
+Commits publicados:
 
-- Backend `7d09fb9` — `feat(history): expõe consulta autenticada de versões`.
-- Backend `d2f0d50` — `perf(history): lista metadados sem carregar conteudo`.
-- Frontend `3727ace` — `feat(history): integra historico persistente no frontend`.
-- Governança C03: commit documental local contendo exclusivamente os quatro
-  documentos canônicos atualizados.
+- Backend `7d09fb97be09d6684771d06d6a3525fdf7ed3363`, `f6dce45958ff37190e8ca8fc2970dabcc49478d0`,
+  `d2f0d508b1aa3d3a9a918bed0cdf4721e1a3c4d6` e
+  `ae9801a6279e67d0986006d870035ece503a5cd8`.
+- Frontend `3727aceab8494932eaeab6704ff00d3e44711491`.
 
-Nenhum destes commits foi enviado ao GitHub. Não houve migration, escrita
-remota, deploy ou chamada paga de IA no C03.
+O conjunto autorizado foi enviado exclusivamente para
+`origin/desenvolvimento/maturacao-darcy`. Não houve migration, escrita remota,
+deploy ou chamada paga de IA no C03.
+
+### Registro de publicação
+
+- Backend: HEAD remoto `ae9801a6279e67d0986006d870035ece503a5cd8`; Backend CI
+  #41651698301 concluído com sucesso.
+- Frontend: HEAD remoto `3727aceab8494932eaeab6704ff00d3e44711491`; Frontend CI
+  #41651696497 concluído com sucesso.
+- Os worktrees locais estão sincronizados com os respectivos remotos. As
+  atualizações documentais desta consolidação permanecem locais e não foram
+  incluídas em novo push.
 
 ## Gate E2E complementar
 
@@ -113,8 +123,9 @@ Implementar restauração explícita e autenticada, com confirmação visual,
 linhagem `parentVersionId`, bloqueio seguro em `409` e validação PostgreSQL E2E.
 Não iniciar C04 automaticamente.
 
-## Pedido de publicação
+## Situação pós-publicação
 
-Solicita-se aprovação humana posterior, separada por repositório, branch e
-conjunto exato de commits acima. Até essa aprovação, o estado correto é
-**validado localmente, não publicado e não homologado**.
+A publicação foi autorizada e concluída na branch de desenvolvimento com
+parecer **GO COM RESSALVA**. A flag do histórico permanece desativada por
+padrão e a funcionalidade não está autorizada para ativação em Alpha ou
+produção. O C04 não foi iniciado.
