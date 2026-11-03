@@ -216,6 +216,8 @@ describe('marcos acadêmicos transacionais', () => {
 
   it('não cria versão em autosave genérico', async () => {
     const previous = makeProgress()
+    previous.contexto.status = 'aprovado'
+    previous.contexto.texto_sugerido = 'Texto aprovado anteriormente.'
     const next = structuredClone(previous)
     next.contexto.respostas_usuario = { problema_central: 'Alteração intermediária' }
     mocks.progressFindUnique.mockResolvedValue({ progress: previous, revision: 2 })

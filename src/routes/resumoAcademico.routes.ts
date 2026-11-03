@@ -21,6 +21,8 @@ import { requireProfile } from '../middlewares/requireProfile'
 const router = Router()
 
 router.get('/:projectId/history', requireAuth, requireProfile, ResumoAcademicoController.getHistory)
+router.get('/:projectId/versions/:versionId', requireAuth, requireProfile, ResumoAcademicoController.getVersion)
+router.get('/:projectId/versions', requireAuth, requireProfile, ResumoAcademicoController.listVersions)
 router.get('/:projectId', requireAuth, requireProfile, ResumoAcademicoController.getProgress)
 router.put('/:projectId', requireAuth, requireProfile, ResumoAcademicoController.putProgress)
 // Comandos explícitos; o PUT acima permanece reservado ao autosave.

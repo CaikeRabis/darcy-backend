@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   authGetUser: vi.fn(),
   ensureProfile: vi.fn(),
   listOwnedResumoAcademicoHistory: vi.fn(),
+  listOwnedResumoAcademicoTextVersions: vi.fn(),
+  getOwnedResumoAcademicoTextVersion: vi.fn(),
   getResumoAcademicoProgress: vi.fn(),
   upsertResumoAcademicoProgress: vi.fn(),
   approveResumoAcademicoSection: vi.fn(),
@@ -32,6 +34,11 @@ vi.mock('../../src/services/ResumoAcademicoService', () => ({
   approveResumoAcademicoSection: mocks.approveResumoAcademicoSection,
   consolidateResumoAcademico: mocks.consolidateResumoAcademico,
   getOwnedResumoScientificContext: mocks.getOwnedResumoScientificContext,
+}))
+
+vi.mock('../../src/services/ResumoAcademicoTextVersionService', () => ({
+  listOwnedResumoAcademicoTextVersions: mocks.listOwnedResumoAcademicoTextVersions,
+  getOwnedResumoAcademicoTextVersion: mocks.getOwnedResumoAcademicoTextVersion,
 }))
 
 vi.mock('../../src/services/ai/AIService', () => ({
@@ -221,6 +228,106 @@ describe('rota autenticada de histórico do Resumo Acadêmico', () => {
 
     expect(result.status).toBe(400)
     expect(mocks.listOwnedResumoAcademicoHistory).not.toHaveBeenCalled()
+  })
+
+  it('lista somente metadados de versões com paginação e ownership', async () => {
+    mocks.listOwnedResumoAcademicoTextVersions.mockResolvedValue({
+      versions: [{
+        id: 'version-2',
+        projectId: 'project-owned',
+        scopeKey: 'secao.contexto',
+        section: 'contexto',
+        versionNumber: 2,
+        progressRevision: 5,
+        origin: 'pesquisador',
+        content: 'texto integral não deve sair na listagem',
+        contentHash: 'a'.repeat(64),
+        previousVersionId: 'version-1',
+        sourceEventId: 'event-2',
+        createdAt: new Date('2026-11-03T10:00:00.000Z'),
+      }],
+      nextCursor: 1,
+    })
+
+    const result = await request(
+      '/api/v1/modulos/resumo-academico/project-owned/versions?scopeKey=secao.contexto&section=contexto&limit=1&beforeVersionNumber=3',
+      'GET',
+      'Bearer token-fake-de-teste',
+    )
+
+    expect(result.status).toBe(200)
+    expect(result.body).toEqual({
+      ok: true,
+      versions: {
+        versions: [{
+          id: 'version-2',
+          projectId: 'project-owned',
+          scopeKey: 'secao.contexto',
+          section: 'contexto',
+          versionNumber: 2,
+          progressRevision: 5,
+          origin: 'pesquisador',
+          contentHash: 'a'.repeat(64),
+          previousVersionId: 'version-1',
+          sourceEventId: 'event-2',
+          createdAt: '2026-11-03T10:00:00.000Z',
+        }],
+        nextCursor: 1,
+      },
+    })
+    expect(mocks.listOwnedResumoAcademicoTextVersions).toHaveBeenCalledWith(
+      'project-owned',
+      '00000000-0000-4000-8000-000000000001',
+      { scopeKey: 'secao.contexto', section: 'contexto', limit: 1, beforeVersionNumber: 3 },
+    )
+  })
+
+  it('retorna texto integral somente na consulta autenticada de uma versão', async () => {
+    const version = {
+      id: 'version-1',
+      projectId: 'project-owned',
+      scopeKey: 'secao.contexto',
+      section: 'contexto',
+      versionNumber: 1,
+      progressRevision: 4,
+      origin: 'pesquisador',
+      content: 'Texto integral protegido.',
+      contentHash: 'b'.repeat(64),
+      previousVersionId: null,
+      sourceEventId: 'event-1',
+      createdAt: new Date('2026-11-03T10:00:00.000Z'),
+    }
+    mocks.getOwnedResumoAcademicoTextVersion.mockResolvedValue(version)
+
+    const result = await request(
+      '/api/v1/modulos/resumo-academico/project-owned/versions/version-1',
+      'GET',
+      'Bearer token-fake-de-teste',
+    )
+
+    expect(result.status).toBe(200)
+    expect(result.body).toEqual({ ok: true, version: JSON.parse(JSON.stringify(version)) })
+    expect(mocks.getOwnedResumoAcademicoTextVersion).toHaveBeenCalledWith(
+      'project-owned',
+      '00000000-0000-4000-8000-000000000001',
+      'version-1',
+    )
+  })
+
+  it('oculta versão de outro projeto como 404', async () => {
+    mocks.getOwnedResumoAcademicoTextVersion.mockResolvedValue(undefined)
+
+    const result = await request(
+      '/api/v1/modulos/resumo-academico/project-other/versions/version-1',
+      'GET',
+      'Bearer token-fake-de-teste',
+    )
+
+    expect(result.status).toBe(404)
+    expect(result.body).toEqual({
+      ok: false,
+      error: { code: 'TEXT_VERSION_NOT_FOUND', message: 'Versão textual não encontrada.' },
+    })
   })
 
   it('retorna revisão zero para progresso inexistente e a revisão persistida para projeto próprio', async () => {

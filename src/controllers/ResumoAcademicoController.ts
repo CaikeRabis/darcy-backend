@@ -26,6 +26,10 @@ import {
   listOwnedResumoAcademicoHistory,
   upsertResumoAcademicoProgress,
 } from '../services/ResumoAcademicoService'
+import {
+  getOwnedResumoAcademicoTextVersion,
+  listOwnedResumoAcademicoTextVersions,
+} from '../services/ResumoAcademicoTextVersionService'
 import { ResumoAcademicoSection } from '@prisma/client'
 
 const ProjectParamsSchema = z.object({
@@ -39,6 +43,13 @@ const SectionApprovalParamsSchema = ProjectParamsSchema.extend({
 const HistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   beforeSequence: z.coerce.number().int().min(1).optional(),
+}).strict()
+
+const VersionsQuerySchema = z.object({
+  scopeKey: z.string().trim().min(1).max(120),
+  section: z.nativeEnum(ResumoAcademicoSection).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  beforeVersionNumber: z.coerce.number().int().min(1).optional(),
 }).strict()
 
 function getAuthenticatedProfileId(request: Request): string | null {
@@ -85,6 +96,16 @@ function sendProgressOperationError(response: Response): void {
   })
 }
 
+function sendVersionNotFound(response: Response): void {
+  response.status(404).json({
+    ok: false,
+    error: {
+      code: 'TEXT_VERSION_NOT_FOUND',
+      message: 'Versão textual não encontrada.',
+    },
+  })
+}
+
 function sendRevisionConflict(response: Response): void {
   response.status(409).json({
     ok: false,
@@ -106,6 +127,75 @@ function sendInvalidMilestone(response: Response, message: string): void {
 }
 
 export class ResumoAcademicoController {
+  static async listVersions(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = ProjectParamsSchema.safeParse(request.params)
+    const queryResult = VersionsQuerySchema.safeParse(request.query)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+
+    if (!paramsResult.success || !queryResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const page = await listOwnedResumoAcademicoTextVersions(
+        paramsResult.data.projectId,
+        profileId,
+        queryResult.data,
+      )
+
+      if (!page) {
+        sendProjectNotFound(response)
+        return
+      }
+
+      const versions = page.versions.map(({ content: _content, ...metadata }) => metadata)
+      response.status(200).json({ ok: true, versions: { versions, nextCursor: page.nextCursor } })
+    } catch {
+      sendProgressOperationError(response)
+    }
+  }
+
+  static async getVersion(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = z.object({
+      projectId: z.string().min(1).max(100),
+      versionId: z.string().min(1).max(100),
+    }).strict().safeParse(request.params)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+
+    if (!paramsResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const version = await getOwnedResumoAcademicoTextVersion(
+        paramsResult.data.projectId,
+        profileId,
+        paramsResult.data.versionId,
+      )
+
+      if (!version) {
+        sendVersionNotFound(response)
+        return
+      }
+
+      response.status(200).json({ ok: true, version })
+    } catch {
+      sendProgressOperationError(response)
+    }
+  }
+
   static async getHistory(request: Request, response: Response): Promise<void> {
     const profileId = getAuthenticatedProfileId(request)
     const paramsResult = ProjectParamsSchema.safeParse(request.params)
