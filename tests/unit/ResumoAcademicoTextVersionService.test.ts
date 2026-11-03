@@ -30,6 +30,7 @@ import {
   createResumoAcademicoTextVersion,
   getOwnedResumoAcademicoTextVersion,
   listOwnedResumoAcademicoTextVersions,
+  listOwnedResumoAcademicoTextVersionMetadata,
 } from '../../src/services/ResumoAcademicoTextVersionService'
 
 function transactionClient() {
@@ -309,5 +310,20 @@ describe('serviço autenticado de versões textuais do Resumo Acadêmico', () =>
       where: { id: 'version-1', projectId: 'project-owned' },
       select: expect.any(Object),
     })
+  })
+
+  it('lista metadados sem selecionar o conteúdo integral', async () => {
+    const entries = [version({ versionNumber: 2 })]
+    const metadata = entries.map(({ content: _content, ...item }) => item)
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.versionFindMany.mockResolvedValue(metadata)
+
+    await expect(listOwnedResumoAcademicoTextVersionMetadata('project-owned', 'profile-a', {
+      scopeKey: 'contexto',
+      limit: 10,
+    })).resolves.toEqual({ versions: metadata, nextCursor: null })
+    expect(mocks.versionFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.not.objectContaining({ content: true }),
+    }))
   })
 })

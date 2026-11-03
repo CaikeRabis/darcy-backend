@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   authGetUser: vi.fn(),
   ensureProfile: vi.fn(),
   listOwnedResumoAcademicoHistory: vi.fn(),
-  listOwnedResumoAcademicoTextVersions: vi.fn(),
+  listOwnedResumoAcademicoTextVersionMetadata: vi.fn(),
   getOwnedResumoAcademicoTextVersion: vi.fn(),
   getResumoAcademicoProgress: vi.fn(),
   upsertResumoAcademicoProgress: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock('../../src/services/ResumoAcademicoService', () => ({
 }))
 
 vi.mock('../../src/services/ResumoAcademicoTextVersionService', () => ({
-  listOwnedResumoAcademicoTextVersions: mocks.listOwnedResumoAcademicoTextVersions,
+  listOwnedResumoAcademicoTextVersionMetadata: mocks.listOwnedResumoAcademicoTextVersionMetadata,
   getOwnedResumoAcademicoTextVersion: mocks.getOwnedResumoAcademicoTextVersion,
 }))
 
@@ -231,7 +231,7 @@ describe('rota autenticada de histórico do Resumo Acadêmico', () => {
   })
 
   it('lista somente metadados de versões com paginação e ownership', async () => {
-    mocks.listOwnedResumoAcademicoTextVersions.mockResolvedValue({
+    mocks.listOwnedResumoAcademicoTextVersionMetadata.mockResolvedValue({
       versions: [{
         id: 'version-2',
         projectId: 'project-owned',
@@ -240,7 +240,6 @@ describe('rota autenticada de histórico do Resumo Acadêmico', () => {
         versionNumber: 2,
         progressRevision: 5,
         origin: 'pesquisador',
-        content: 'texto integral não deve sair na listagem',
         contentHash: 'a'.repeat(64),
         previousVersionId: 'version-1',
         sourceEventId: 'event-2',
@@ -275,7 +274,7 @@ describe('rota autenticada de histórico do Resumo Acadêmico', () => {
         nextCursor: 1,
       },
     })
-    expect(mocks.listOwnedResumoAcademicoTextVersions).toHaveBeenCalledWith(
+    expect(mocks.listOwnedResumoAcademicoTextVersionMetadata).toHaveBeenCalledWith(
       'project-owned',
       '00000000-0000-4000-8000-000000000001',
       { scopeKey: 'secao.contexto', section: 'contexto', limit: 1, beforeVersionNumber: 3 },

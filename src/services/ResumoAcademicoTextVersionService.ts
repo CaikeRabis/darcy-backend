@@ -84,6 +84,13 @@ export interface ResumoAcademicoTextVersionPage {
   nextCursor: number | null
 }
 
+export type ResumoAcademicoTextVersionMetadataRecord = Omit<ResumoAcademicoTextVersionRecord, 'content'>
+
+export interface ResumoAcademicoTextVersionMetadataPage {
+  versions: ResumoAcademicoTextVersionMetadataRecord[]
+  nextCursor: number | null
+}
+
 export interface ListResumoAcademicoTextVersionsOptions {
   scopeKey: string
   section?: ResumoAcademicoSection
@@ -106,8 +113,26 @@ const textVersionSelect = {
   createdAt: true,
 } satisfies Prisma.ResumoAcademicoTextVersionSelect
 
+const textVersionMetadataSelect = {
+  id: true,
+  projectId: true,
+  scopeKey: true,
+  section: true,
+  versionNumber: true,
+  progressRevision: true,
+  origin: true,
+  contentHash: true,
+  previousVersionId: true,
+  sourceEventId: true,
+  createdAt: true,
+} satisfies Prisma.ResumoAcademicoTextVersionSelect
+
 type SelectedTextVersion = Prisma.ResumoAcademicoTextVersionGetPayload<{
   select: typeof textVersionSelect
+}>
+
+type SelectedTextVersionMetadata = Prisma.ResumoAcademicoTextVersionGetPayload<{
+  select: typeof textVersionMetadataSelect
 }>
 
 type ResumoTextVersionDatabase = Pick<
@@ -136,6 +161,10 @@ function contentHash(content: string): string {
 }
 
 function toRecord(version: SelectedTextVersion): ResumoAcademicoTextVersionRecord {
+  return version
+}
+
+function toMetadataRecord(version: SelectedTextVersionMetadata): ResumoAcademicoTextVersionMetadataRecord {
   return version
 }
 
@@ -393,5 +422,49 @@ export async function listOwnedResumoAcademicoTextVersions(
 ): Promise<ResumoAcademicoTextVersionPage | undefined> {
   return prisma.$transaction((transaction) => (
     listOwnedVersionsInTransaction(transaction, projectId, profileId, options)
+  ))
+}
+
+async function listOwnedMetadataInTransaction(
+  database: ResumoTextVersionDatabase,
+  projectId: string,
+  profileId: string,
+  options: ListResumoAcademicoTextVersionsOptions,
+): Promise<ResumoAcademicoTextVersionMetadataPage | undefined> {
+  const project = await findOwnedResumoProject(database, projectId, profileId)
+  if (!project) return undefined
+
+  const parsedOptions = validateListOptions(options)
+  const versions = await database.resumoAcademicoTextVersion.findMany({
+    where: {
+      projectId: project.id,
+      scopeKey: parsedOptions.scopeKey,
+      ...(parsedOptions.section === undefined ? {} : { section: parsedOptions.section }),
+      ...(parsedOptions.beforeVersionNumber === undefined
+        ? {}
+        : { versionNumber: { lt: parsedOptions.beforeVersionNumber } }),
+    },
+    orderBy: { versionNumber: 'desc' },
+    take: parsedOptions.limit + 1,
+    select: textVersionMetadataSelect,
+  })
+
+  const page = versions.slice(0, parsedOptions.limit).map(toMetadataRecord)
+  return {
+    versions: page,
+    nextCursor: versions.length > parsedOptions.limit
+      ? page.at(-1)?.versionNumber ?? null
+      : null,
+  }
+}
+
+/** Lista metadados; conteúdo integral é reservado ao detalhe autenticado. */
+export async function listOwnedResumoAcademicoTextVersionMetadata(
+  projectId: string,
+  profileId: string,
+  options: ListResumoAcademicoTextVersionsOptions,
+): Promise<ResumoAcademicoTextVersionMetadataPage | undefined> {
+  return prisma.$transaction((transaction) => (
+    listOwnedMetadataInTransaction(transaction, projectId, profileId, options)
   ))
 }

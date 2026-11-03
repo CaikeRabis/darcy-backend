@@ -28,7 +28,7 @@ import {
 } from '../services/ResumoAcademicoService'
 import {
   getOwnedResumoAcademicoTextVersion,
-  listOwnedResumoAcademicoTextVersions,
+  listOwnedResumoAcademicoTextVersionMetadata,
 } from '../services/ResumoAcademicoTextVersionService'
 import { ResumoAcademicoSection } from '@prisma/client'
 
@@ -143,7 +143,7 @@ export class ResumoAcademicoController {
     }
 
     try {
-      const page = await listOwnedResumoAcademicoTextVersions(
+      const page = await listOwnedResumoAcademicoTextVersionMetadata(
         paramsResult.data.projectId,
         profileId,
         queryResult.data,
@@ -154,8 +154,7 @@ export class ResumoAcademicoController {
         return
       }
 
-      const versions = page.versions.map(({ content: _content, ...metadata }) => metadata)
-      response.status(200).json({ ok: true, versions: { versions, nextCursor: page.nextCursor } })
+      response.status(200).json({ ok: true, versions: page })
     } catch {
       sendProgressOperationError(response)
     }
