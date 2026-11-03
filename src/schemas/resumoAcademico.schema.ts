@@ -154,4 +154,10 @@ export const ResumoAcademicoProgressRequestSchema = z.object({
  */
 export const ResumoAcademicoMilestoneRequestSchema = ResumoAcademicoProgressRequestSchema
 
+/** Comando explícito de restauração; a operação é idempotente por operationId. */
+export const ResumoAcademicoRestoreRequestSchema = z.object({
+  expectedRevision: z.number().int().nonnegative(),
+  operationId: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+}).strict()
+
 export type ResumoAcademicoState = z.infer<typeof ResumoAcademicoStateSchema>

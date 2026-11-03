@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   upsertResumoAcademicoProgress: vi.fn(),
   approveResumoAcademicoSection: vi.fn(),
   consolidateResumoAcademico: vi.fn(),
+  restoreResumoAcademicoTextVersion: vi.fn(),
   getOwnedResumoScientificContext: vi.fn(),
   generateDarcyResponse: vi.fn(),
   executeQuickAction: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock('../../src/services/ResumoAcademicoService', () => ({
   upsertResumoAcademicoProgress: mocks.upsertResumoAcademicoProgress,
   approveResumoAcademicoSection: mocks.approveResumoAcademicoSection,
   consolidateResumoAcademico: mocks.consolidateResumoAcademico,
+  restoreResumoAcademicoTextVersion: mocks.restoreResumoAcademicoTextVersion,
   getOwnedResumoScientificContext: mocks.getOwnedResumoScientificContext,
 }))
 
@@ -488,5 +490,50 @@ describe('rota autenticada de histórico do Resumo Acadêmico', () => {
 
     expect(result.status).toBe(401)
     expect(mocks.consolidateResumoAcademico).not.toHaveBeenCalled()
+  })
+
+  it('restaura uma versão somente com comando explícito e revisão confirmada', async () => {
+    const progress = makeProgress()
+    progress.contexto.texto_sugerido = 'Texto restaurado.'
+    mocks.restoreResumoAcademicoTextVersion.mockResolvedValue({
+      status: 'saved', progress, revision: 6, versionId: 'version-restored', eventId: 'restoration-op-1',
+    })
+
+    const result = await request(
+      '/api/v1/modulos/resumo-academico/project-owned/versions/version-old/restore',
+      'POST',
+      'Bearer token-fake-de-teste',
+      { expectedRevision: 5, operationId: 'op-1' },
+    )
+
+    expect(result.status).toBe(200)
+    expect(result.body).toEqual({ ok: true, progress, revision: 6, versionId: 'version-restored', eventId: 'restoration-op-1' })
+    expect(mocks.restoreResumoAcademicoTextVersion).toHaveBeenCalledWith(
+      'project-owned',
+      '00000000-0000-4000-8000-000000000001',
+      'version-old',
+      5,
+      'op-1',
+    )
+  })
+
+  it('retorna 409 sem alterar estado quando a restauração está obsoleta', async () => {
+    mocks.restoreResumoAcademicoTextVersion.mockResolvedValue({ status: 'conflict' })
+
+    const result = await request(
+      '/api/v1/modulos/resumo-academico/project-owned/versions/version-old/restore',
+      'POST',
+      'Bearer token-fake-de-teste',
+      { expectedRevision: 4, operationId: 'op-2' },
+    )
+
+    expect(result.status).toBe(409)
+    expect(result.body).toEqual({
+      ok: false,
+      error: {
+        code: 'RESUMO_PROGRESS_REVISION_CONFLICT',
+        message: 'O progresso foi alterado em outra sessão. Recarregue a versão mais recente antes de salvar novamente.',
+      },
+    })
   })
 })

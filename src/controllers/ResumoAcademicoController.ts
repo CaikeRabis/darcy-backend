@@ -18,12 +18,14 @@ import { z } from 'zod'
 import {
   ResumoAcademicoMilestoneRequestSchema,
   ResumoAcademicoProgressRequestSchema,
+  ResumoAcademicoRestoreRequestSchema,
 } from '../schemas/resumoAcademico.schema'
 import {
   approveResumoAcademicoSection,
   consolidateResumoAcademico,
   getResumoAcademicoProgress,
   listOwnedResumoAcademicoHistory,
+  restoreResumoAcademicoTextVersion,
   upsertResumoAcademicoProgress,
 } from '../services/ResumoAcademicoService'
 import {
@@ -38,6 +40,10 @@ const ProjectParamsSchema = z.object({
 
 const SectionApprovalParamsSchema = ProjectParamsSchema.extend({
   section: z.nativeEnum(ResumoAcademicoSection),
+}).strict()
+
+const VersionRestoreParamsSchema = ProjectParamsSchema.extend({
+  versionId: z.string().min(1).max(120),
 }).strict()
 
 const HistoryQuerySchema = z.object({
@@ -190,6 +196,59 @@ export class ResumoAcademicoController {
       }
 
       response.status(200).json({ ok: true, version })
+    } catch {
+      sendProgressOperationError(response)
+    }
+  }
+
+  static async restoreVersion(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = VersionRestoreParamsSchema.safeParse(request.params)
+    const bodyResult = ResumoAcademicoRestoreRequestSchema.safeParse(request.body)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+
+    if (!paramsResult.success || !bodyResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const result = await restoreResumoAcademicoTextVersion(
+        paramsResult.data.projectId,
+        profileId,
+        paramsResult.data.versionId,
+        bodyResult.data.expectedRevision,
+        bodyResult.data.operationId,
+      )
+
+      if (result === undefined) {
+        sendProjectNotFound(response)
+        return
+      }
+      if (result.status === 'conflict') {
+        sendRevisionConflict(response)
+        return
+      }
+      if (result.status === 'version_not_found') {
+        sendVersionNotFound(response)
+        return
+      }
+      if (result.status === 'invalid_restore') {
+        sendInvalidMilestone(response, result.message)
+        return
+      }
+
+      response.status(200).json({
+        ok: true,
+        progress: result.progress,
+        revision: result.revision,
+        versionId: result.versionId,
+        eventId: result.eventId,
+      })
     } catch {
       sendProgressOperationError(response)
     }

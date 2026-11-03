@@ -24,6 +24,7 @@ enum ResumoAcademicoEventType {
   decisao_autoral_alterada
   classificacao_cientifica_alterada
   resumo_consolidado
+  restauracao
 }
 
 enum ResumoAcademicoEventActor {

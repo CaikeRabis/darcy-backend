@@ -274,7 +274,7 @@ export async function createResumoAcademicoTextVersionInTransaction(
   // seja idêntico ao snapshot anterior, um sourceEventId distinto representa
   // uma confirmação distinta e deve preservar esse marco. Retries continuam
   // idempotentes pelo bloco de existingByEvent acima.
-  const isSemanticConfirmation = input.operation === 'researcher_confirmation' && Boolean(input.sourceEventId)
+  const isSemanticConfirmation = (input.operation === 'researcher_confirmation' || input.operation === 'restoration') && Boolean(input.sourceEventId)
   if (!isSemanticConfirmation) {
     const existingByContent = await database.resumoAcademicoTextVersion.findFirst({
       where: {

@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   historyFindFirst: vi.fn(),
   historyFindMany: vi.fn(),
   historyCreate: vi.fn(),
+  historyUpdate: vi.fn(),
+  textVersionFindUnique: vi.fn(),
+  textVersionFindFirst: vi.fn(),
+  textVersionCreate: vi.fn(),
   transaction: vi.fn(),
 }))
 
@@ -28,6 +32,12 @@ vi.mock('../../src/lib/prisma', () => ({
       findFirst: mocks.historyFindFirst,
       findMany: mocks.historyFindMany,
       create: mocks.historyCreate,
+      update: mocks.historyUpdate,
+    },
+    resumoAcademicoTextVersion: {
+      findUnique: mocks.textVersionFindUnique,
+      findFirst: mocks.textVersionFindFirst,
+      create: mocks.textVersionCreate,
     },
     $transaction: mocks.transaction,
   },
@@ -37,6 +47,7 @@ import {
   deriveResumoAcademicoHistoryEvents,
   getResumoAcademicoProgress,
   listOwnedResumoAcademicoHistory,
+  restoreResumoAcademicoTextVersion,
   upsertResumoAcademicoProgress,
 } from '../../src/services/ResumoAcademicoService'
 
@@ -86,6 +97,12 @@ function transactionClient() {
       findFirst: mocks.historyFindFirst,
       findMany: mocks.historyFindMany,
       create: mocks.historyCreate,
+      update: mocks.historyUpdate,
+    },
+    resumoAcademicoTextVersion: {
+      findUnique: mocks.textVersionFindUnique,
+      findFirst: mocks.textVersionFindFirst,
+      create: mocks.textVersionCreate,
     },
   }
 }
@@ -407,5 +424,54 @@ describe('histórico imutável do Resumo Acadêmico', () => {
       orderBy: { sequence: 'desc' },
       take: 26,
     }))
+  })
+
+  it('restaura uma versão de seção atomically, cria linhagem/evento e é idempotente', async () => {
+    const current = makeProgress()
+    current.contexto.texto_sugerido = 'Texto atual.'
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.textVersionFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'version-old', projectId: 'project-owned', scopeKey: 'secao.contexto' })
+    mocks.textVersionFindFirst.mockResolvedValue({
+      id: 'version-old', scopeKey: 'secao.contexto', section: 'contexto', content: 'Texto anterior.',
+    })
+    mocks.progressFindUnique.mockResolvedValue({ progress: current, revision: 4 })
+    mocks.progressUpdateMany.mockResolvedValue({ count: 1 })
+    mocks.historyFindFirst.mockResolvedValue({ sequence: 9 })
+    mocks.historyCreate.mockResolvedValue({ id: 'restoration-op-1' })
+    mocks.textVersionCreate.mockResolvedValue({
+      id: 'version-restored', projectId: 'project-owned', scopeKey: 'secao.contexto', section: 'contexto',
+      versionNumber: 3, progressRevision: 5, origin: 'restauracao', content: 'Texto anterior.',
+      contentHash: 'hash', previousVersionId: 'version-old', sourceEventId: 'restoration-op-1', createdAt: new Date(),
+    })
+
+    await expect(restoreResumoAcademicoTextVersion('project-owned', 'profile-a', 'version-old', 4, 'op-1')).resolves.toMatchObject({
+      status: 'saved', revision: 5, versionId: 'version-restored', eventId: 'restoration-op-1',
+      progress: { contexto: { texto_sugerido: 'Texto anterior.', status: 'em_revisao' } },
+    })
+    expect(mocks.progressUpdateMany).toHaveBeenCalledWith({
+      where: { projectId: 'project-owned', revision: 4 },
+      data: { progress: expect.objectContaining({ contexto: expect.objectContaining({ texto_sugerido: 'Texto anterior.' }) }), revision: { increment: 1 } },
+    })
+    expect(mocks.historyCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ id: 'restoration-op-1', type: ResumoAcademicoEventType.restauracao }) }))
+    expect(mocks.historyUpdate).toHaveBeenCalledWith({ where: { id: 'restoration-op-1' }, data: { contentVersionRef: 'version-restored' } })
+
+    mocks.textVersionFindUnique.mockResolvedValueOnce({ id: 'version-restored', projectId: 'project-owned', scopeKey: 'secao.contexto', previousVersionId: 'version-old' })
+    await expect(restoreResumoAcademicoTextVersion('project-owned', 'profile-a', 'version-old', 4, 'op-1')).resolves.toMatchObject({ status: 'saved', revision: 4, versionId: 'version-restored' })
+    expect(mocks.progressUpdateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejeita restauração com revisão obsoleta sem criar efeitos colaterais', async () => {
+    mocks.projectFindFirst.mockResolvedValue({ id: 'project-owned' })
+    mocks.textVersionFindUnique.mockResolvedValue(null)
+    mocks.textVersionFindFirst.mockResolvedValue({ id: 'version-old', scopeKey: 'secao.contexto', section: 'contexto', content: 'Texto anterior.' })
+    mocks.progressFindUnique.mockResolvedValue({ progress: makeProgress(), revision: 8 })
+
+    await expect(restoreResumoAcademicoTextVersion('project-owned', 'profile-a', 'version-old', 7, 'op-2')).resolves.toEqual({ status: 'conflict' })
+    expect(mocks.progressUpdateMany).not.toHaveBeenCalled()
+    expect(mocks.historyCreate).not.toHaveBeenCalled()
+    expect(mocks.textVersionCreate).not.toHaveBeenCalled()
   })
 })

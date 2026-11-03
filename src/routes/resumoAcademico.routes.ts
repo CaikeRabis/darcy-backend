@@ -22,6 +22,7 @@ const router = Router()
 
 router.get('/:projectId/history', requireAuth, requireProfile, ResumoAcademicoController.getHistory)
 router.get('/:projectId/versions/:versionId', requireAuth, requireProfile, ResumoAcademicoController.getVersion)
+router.post('/:projectId/versions/:versionId/restore', requireAuth, requireProfile, ResumoAcademicoController.restoreVersion)
 router.get('/:projectId/versions', requireAuth, requireProfile, ResumoAcademicoController.listVersions)
 router.get('/:projectId', requireAuth, requireProfile, ResumoAcademicoController.getProgress)
 router.put('/:projectId', requireAuth, requireProfile, ResumoAcademicoController.putProgress)

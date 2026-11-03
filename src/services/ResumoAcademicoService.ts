@@ -70,6 +70,7 @@ const HISTORY_EVENT_ORDER: Record<ResumoAcademicoEventType, number> = {
   decisao_autoral_alterada: 4,
   classificacao_cientifica_alterada: 5,
   resumo_consolidado: 6,
+  restauracao: 7,
 }
 
 const MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS = 3
@@ -107,6 +108,12 @@ export type ResumoAcademicoProgressSaveResult =
   | { status: 'saved'; progress: ResumoAcademicoState; revision: number }
   | { status: 'conflict' }
   | { status: 'invalid_milestone'; message: string }
+
+export type ResumoAcademicoRestoreResult =
+  | { status: 'saved'; progress: ResumoAcademicoState; revision: number; versionId: string; eventId: string }
+  | { status: 'conflict' }
+  | { status: 'version_not_found' }
+  | { status: 'invalid_restore'; message: string }
 
 export type ResumoAcademicoMilestone =
   | { type: 'section_approval'; section: ResumoAcademicoSection }
@@ -671,6 +678,146 @@ export async function consolidateResumoAcademico(
     expectedRevision,
     { type: 'summary_consolidation' },
   )
+}
+
+/**
+ * Restaura somente o escopo textual da versão indicada. A operação usa o
+ * operationId como identidade estável do evento e da versão, permitindo
+ * reenvio idempotente sem aceitar uma revisão obsoleta para uma nova operação.
+ */
+export async function restoreResumoAcademicoTextVersion(
+  projectId: string,
+  profileId: string,
+  versionId: string,
+  expectedRevision: number,
+  operationId: string,
+): Promise<ResumoAcademicoRestoreResult | undefined> {
+  const eventId = `restoration-${operationId}`
+
+  for (let attempt = 0; attempt < MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (transaction) => {
+        const project = await findOwnedResumoAcademicoProject(transaction, projectId, profileId)
+        if (!project) return undefined
+
+        const existingVersion = await transaction.resumoAcademicoTextVersion.findUnique({
+          where: { sourceEventId: eventId },
+          select: { id: true, projectId: true, scopeKey: true, previousVersionId: true },
+        })
+        if (existingVersion) {
+          if (existingVersion.projectId !== project.id || existingVersion.previousVersionId !== versionId) {
+            return { status: 'invalid_restore', message: 'A operação de restauração não pertence ao projeto informado.' }
+          }
+          const current = await transaction.resumoAcademicoProgress.findUnique({
+            where: { projectId: project.id },
+            select: { progress: true, revision: true },
+          })
+          if (!current) return { status: 'invalid_restore', message: 'O projeto ainda não possui progresso persistido.' }
+          return {
+            status: 'saved' as const,
+            progress: parsePersistedProgress(current.progress),
+            revision: current.revision,
+            versionId: existingVersion.id,
+            eventId,
+          }
+        }
+
+        const sourceVersion = await transaction.resumoAcademicoTextVersion.findFirst({
+          where: { id: versionId, projectId: project.id },
+          select: { id: true, scopeKey: true, section: true, content: true },
+        })
+        if (!sourceVersion) return { status: 'version_not_found' as const }
+
+        const existing = await transaction.resumoAcademicoProgress.findUnique({
+          where: { projectId: project.id },
+          select: { progress: true, revision: true },
+        })
+        if (!existing) return { status: 'invalid_restore', message: 'O projeto ainda não possui progresso persistido.' }
+        if (existing.revision !== expectedRevision) return { status: 'conflict' as const }
+
+        const previous = parsePersistedProgress(existing.progress)
+        const next = structuredClone(previous)
+        if (sourceVersion.section) {
+          if (sourceVersion.section === ResumoAcademicoSection.resultados) {
+            next.resultados = {
+              ...next.resultados,
+              texto_sugerido: sourceVersion.content,
+              status: 'em_revisao',
+            }
+          } else {
+            next[sourceVersion.section] = {
+              ...next[sourceVersion.section],
+              texto_sugerido: sourceVersion.content,
+              status: 'em_revisao',
+            }
+          }
+        } else if (sourceVersion.scopeKey === 'resumo_completo') {
+          next.resumo_completo = sourceVersion.content
+          next.numero_palavras = sourceVersion.content.trim() ? sourceVersion.content.trim().split(/\s+/).length : 0
+        } else {
+          return { status: 'invalid_restore', message: 'A versão não possui um escopo restaurável.' }
+        }
+
+        const updated = await transaction.resumoAcademicoProgress.updateMany({
+          where: { projectId: project.id, revision: expectedRevision },
+          data: { progress: next, revision: { increment: 1 } },
+        })
+        if (updated.count !== 1) return { status: 'conflict' as const }
+
+        const lastEvent = await transaction.resumoAcademicoHistoryEvent.findFirst({
+          where: { projectId: project.id },
+          orderBy: { sequence: 'desc' },
+          select: { sequence: true },
+        })
+        const event = await transaction.resumoAcademicoHistoryEvent.create({
+          data: {
+            id: eventId,
+            projectId: project.id,
+            sequence: (lastEvent?.sequence ?? 0) + 1,
+            type: ResumoAcademicoEventType.restauracao,
+            actor: ResumoAcademicoEventActor.pesquisador,
+            ...(sourceVersion.section ? { section: sourceVersion.section } : {}),
+            summary: sourceVersion.section
+              ? `Versão anterior da seção ${SECTION_LABELS[sourceVersion.section]} restaurada pelo pesquisador.`
+              : 'Versão anterior do resumo acadêmico restaurada pelo pesquisador.',
+          },
+          select: { id: true },
+        })
+
+        const version = await createResumoAcademicoTextVersionInTransaction(transaction, {
+          projectId: project.id,
+          profileId,
+          scopeKey: sourceVersion.scopeKey,
+          section: sourceVersion.section,
+          progressRevision: expectedRevision + 1,
+          content: sourceVersion.content,
+          operation: 'restoration',
+          previousVersionId: sourceVersion.id,
+          sourceEventId: event.id,
+        })
+        if (!version) throw new Error('Não foi possível associar a versão de restauração ao projeto autenticado.')
+
+        await transaction.resumoAcademicoHistoryEvent.update({
+          where: { id: event.id },
+          data: { contentVersionRef: version.id },
+        })
+
+        return {
+          status: 'saved' as const,
+          progress: next,
+          revision: expectedRevision + 1,
+          versionId: version.id,
+          eventId: event.id,
+        }
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    } catch (error) {
+      if (!isSerializableTransactionError(error) || attempt === MAX_SERIALIZABLE_TRANSACTION_ATTEMPTS - 1) {
+        throw error
+      }
+    }
+  }
+
+  throw new Error('A restauração do texto excedeu as tentativas de serialização.')
 }
 
 /**
