@@ -117,3 +117,23 @@
 - Justificativa: ownership, paginação real e payloads de conteúdo dependem de
   PostgreSQL/Auth E2E e não foram escritos nesta ativação.
 - Consequência: commits permanecem locais e push aguarda aprovação humana.
+
+## D-2026-11-03-14 — Listagem otimizada por metadados
+
+- Tarefa: C03-T2
+- Decisão: a consulta paginada de versões usa seleção Prisma sem `content`;
+  o detalhe autenticado permanece responsável pelo texto integral.
+- Justificativa: reduzir leitura e exposição desnecessárias sem alterar o
+  contrato HTTP já validado.
+- Consequência: o endpoint de listagem continua metadata-only e o detalhe não
+  é afetado.
+
+## D-2026-11-03-15 — Gate E2E com ressalva explícita
+
+- Tarefa: C03-T5
+- Decisão: backend E2E aprovado não promove automaticamente a UI a homologada;
+  a falha de assertion do fixture permanece registrada como ressalva.
+- Justificativa: o painel e a comparação foram observados, mas o vínculo
+  `contentVersionRef` não foi preparado no fixture sintético da execução.
+- Consequência: publicação pode ser considerada somente **GO COM RESSALVA**,
+  com flag desativada até estabilização da cobertura visual.

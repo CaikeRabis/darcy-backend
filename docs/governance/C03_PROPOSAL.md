@@ -35,7 +35,7 @@ autorais.
 
 ## Evidências locais do C03
 
-- Backend: `npm test` aprovou 199 testes; TypeScript, test-typecheck, Prisma
+- Backend: `npm test` aprovou 200 testes; TypeScript, test-typecheck, Prisma
   validate, build e `git diff --check` aprovados.
 - Frontend: `npm test` aprovou 73 testes; TypeScript, test-typecheck, build,
   typecheck E2E e `git diff --check` aprovados.
@@ -47,6 +47,8 @@ autorais.
   limite e cursor por `versionNumber`; `GET /:projectId/versions/:versionId`
   retorna conteúdo integral somente após ownership autenticado. Recursos
   ausentes ou de outro projeto resultam em 404 sanitizado.
+- A consulta paginada usa uma seleção Prisma de metadados sem `content`; o
+  conteúdo integral só é selecionado no detalhe autenticado.
 - C03-T3/T4: `HistoryScreen` usa a API real apenas para projetos
   `resumo-academico` quando a flag opt-in está habilitada; a comparação é
   somente leitura, sem restauração ou merge.
@@ -61,12 +63,34 @@ autorais.
 Commits locais preparados:
 
 - Backend `7d09fb9` — `feat(history): expõe consulta autenticada de versões`.
+- Backend `d2f0d50` — `perf(history): lista metadados sem carregar conteudo`.
 - Frontend `3727ace` — `feat(history): integra historico persistente no frontend`.
 - Governança C03: commit documental local contendo exclusivamente os quatro
   documentos canônicos atualizados.
 
 Nenhum destes commits foi enviado ao GitHub. Não houve migration, escrita
 remota, deploy ou chamada paga de IA no C03.
+
+## Gate E2E complementar
+
+- Backend `test:e2e:resumo-history`: **APROVADO**, exit code 0. Evidências:
+  `initialEventCount=6`, `finalEventCount=8`, sequências 1–8, concorrência
+  `200/409`, recuperação `200`, ownership `404`, paginação `2/2` e cleanup
+  `204/404`.
+- Frontend Playwright com flag temporariamente habilitada: o painel real foi
+  carregado, a listagem não exibiu conteúdo integral e a comparação exibiu as
+  duas versões sintéticas. A execução terminou em falha somente na assertion
+  do fixture que esperava `contentVersionRef` em eventos criados diretamente
+  sem esse vínculo; não há defeito funcional confirmado. Cada projeto criado
+  foi limpo com `DELETE 204` e verificação `GET 404`.
+- Estados vazio/erro e fluxo legado com flag desativada permanecem cobertos
+  por código/testes locais, mas não foram homologados visualmente neste gate.
+
+### Parecer do gate
+
+**GO COM RESSALVA** para publicação dos commits com a flag desativada. A
+ressalva é a correção/estabilização do fixture e da assertion visual de vínculo
+evento-versão antes de habilitar o histórico real no Alpha.
 
 ## Pendências E2E
 

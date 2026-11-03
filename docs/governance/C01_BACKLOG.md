@@ -92,7 +92,7 @@ O plano canônico está em `C03_PROPOSAL.md`; não foi criado backlog paralelo.
 | C03-T2 | API autenticada de versões | CONCLUÍDA LOCALMENTE | Rotas paginadas, ownership e metadados sem conteúdo |
 | C03-T3 | Histórico real no frontend | CONCLUÍDA LOCALMENTE | API e painel opt-in preservando fallback demonstrativo |
 | C03-T4 | Comparação visual | CONCLUÍDA LOCALMENTE | Comparação somente leitura com linhas adicionadas/removidas |
-| C03-T5 | Validação e governança | CONCLUÍDA LOCALMENTE | 199/73 testes, typechecks, builds e commits locais |
+| C03-T5 | Validação e governança | CONCLUÍDA LOCALMENTE | 200/73 testes, typechecks, builds e commits locais |
 
 ### Gates independentes do C03
 
@@ -104,3 +104,6 @@ O plano canônico está em `C03_PROPOSAL.md`; não foi criado backlog paralelo.
 Falhas de autenticação, ownership, concorrência ou persistência bloqueiam a
 publicação de alterações dependentes. A flag do histórico permanece desativada
 até aprovação e validação integrada.
+
+O gate E2E complementar resultou em **GO COM RESSALVA**: backend aprovado;
+frontend observado no painel real, porém com assertion de fixture pendente.

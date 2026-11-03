@@ -35,7 +35,7 @@ interações assistidas por IA.
 - C03-T1/T2/T3/T4 foram implementadas localmente: consulta autenticada de
   histórico/versões, painel opt-in e comparação somente leitura. C03-T3 de
   restauração permanece deliberadamente reservado ao C04.
-- Regressão C03: backend 199 testes, frontend 73 testes; TypeScript,
+- Regressão C03: backend 200 testes, frontend 73 testes; TypeScript,
   test-typecheck, builds, Prisma validate (backend), typecheck E2E (frontend)
   e `git diff --check` aprovados.
 - C02-T2 e C02-T3 foram executadas exclusivamente no `darcy-e2e`, com projetos
@@ -52,9 +52,10 @@ interações assistidas por IA.
   local nos commits `7d09fb9` (backend) e `3727ace` (frontend).
 - **Resultado do CI:** C01/C02 preservam os resultados já registrados; não há
   CI remoto para os commits C03 antes do push.
-- **Validação E2E:** C02 mantém suas evidências históricas; C03 ainda não
-  executou escrita remota, portanto ownership/paginação/UI real permanecem
-  pendentes.
+- **Validação E2E:** C03 teve backend aprovado com concorrência `200/409`,
+  recuperação `200`, ownership `404`, paginação e cleanup `204/404`. A UI
+  alcançou o painel real e a comparação, mas a assertion final de
+  `contentVersionRef` do fixture falhou; o gate geral é **GO COM RESSALVA**.
 
 O registro de publicação deve preservar o conjunto de commits, o repositório,
 a branch e o resultado do CI; novos pushes continuam exigindo aprovação
@@ -86,6 +87,8 @@ explícita.
 - T5: concluída localmente; commits rastreáveis e proposta consolidada de
   publicação preparada.
 - C03 não está publicado, não está homologado e não autoriza o início de C04.
+- A flag de histórico permanece desativada no Alpha; a ressalva visual deve
+  ser resolvida antes da habilitação em produção.
 
 ## Referências técnicas
 
@@ -104,7 +107,7 @@ autorização específica.
 
 ## Classificação das evidências
 
-- **VERIFICADO NO CÓDIGO/TESTES:** branches, HEADs, contratos D4.2, 199 testes
+- **VERIFICADO NO CÓDIGO/TESTES:** branches, HEADs, contratos D4.2, 200 testes
   backend, 73 testes frontend, typechecks, builds, parser de API, ownership
   nos handlers e guards locais.
 - **REPORTADO EM DOCUMENTAÇÃO:** migrations D2 previamente aplicadas no E2E;
