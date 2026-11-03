@@ -17,12 +17,12 @@ interações assistidas por IA.
   `versionNumber`, hash, origem operacional e referências de evento.
 - Ambientes: Alpha/produção separados do perfil E2E; guards impedem mistura.
 
-## Estado técnico verificado em 30/10/2026
+## Estado técnico verificado em 03/11/2026
 
 - Baseline inicial: backend `ed92dc0`, frontend `dd631d5`.
-- Estado atual após C01: backend `d05e561` (conjunto local de três commits),
-  frontend `57f185f` (conjunto local de um commit), ambos na branch
-  `desenvolvimento/maturacao-darcy`, com commits locais não publicados.
+- Estado atual após C01: backend `48bd69e` (conjunto publicado de quatro
+  commits), frontend `57f185f` (conjunto publicado de um commit), ambos na
+  branch `desenvolvimento/maturacao-darcy`.
 - D4.2: implementação local com comandos autenticados de aprovação/consolidação,
   suíte E2E preparada e integração frontend opt-in ainda não publicada.
 - Última regressão D4.2: 196 testes backend aprovados, TypeScript, Prisma
@@ -30,21 +30,34 @@ interações assistidas por IA.
 - Frontend: integração dos comandos protegida pela flag
   `VITE_RESUMO_MILESTONE_COMMANDS=enabled`; a ausência da flag preserva o fluxo
   anterior e não envia requisições de marco.
-- Nenhuma migration, escrita remota, deploy, push ou chamada real de IA foi
-  executada no ciclo atual.
+- Nenhuma migration, escrita remota, E2E remoto, deploy ou chamada real de IA
+  foi executada no ciclo atual.
+- C02-T2 e C02-T3 foram executadas exclusivamente no `darcy-e2e`, com projetos
+  sintéticos e cleanup confirmado. A flag frontend permaneceu local.
 
 ## Gates independentes de publicação
 
 - **Validação local:** concluída para os conjuntos de commits do backend e do
   frontend.
-- **Aprovação humana:** pendente.
-- **Publicação no GitHub:** não realizada.
-- **Resultado do CI:** não disponível para os commits locais não publicados.
+- **Aprovação humana:** concluída para os dois repositórios.
+- **Publicação no GitHub:** concluída nas branches de desenvolvimento.
+- **Resultado do CI:** Backend CI #24 aprovado para `48bd69e`; CI do frontend
+  não verificável pelo endpoint público consultado.
 - **Validação E2E:** pendente; a suíte está preparada, mas não foi executada
   remotamente.
 
-Uma proposta de publicação deve reunir os commits de cada repositório, indicar a
-branch e solicitar aprovação explícita antes de qualquer push.
+O registro de publicação deve preservar o conjunto de commits, o repositório,
+a branch e o resultado do CI; novos pushes continuam exigindo aprovação
+explícita.
+
+## Estado do ciclo C02
+
+- C02-T1: concluída, baseline e autorização reconciliados.
+- C02-T2: validada com PostgreSQL E2E real e cleanup `204/404`.
+- C02-T3: validada com Playwright protegido; comando de aprovação `POST` e
+  persistência posterior confirmados.
+- C02-T4: concluída como análise; restauração permanece não implementada.
+- C02-T5: em consolidação local, sem push automático.
 
 ## Referências técnicas
 

@@ -57,8 +57,8 @@ separadamente:
 
 | Escopo | Validação local | Aprovação humana | Publicação GitHub | CI | Validação E2E |
 |---|---|---|---|---|---|
-| Backend C01 (`d05e561`, conjunto de 3 commits) | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | NÃO EXECUTADO PARA ESTES COMMITS | PENDENTE |
-| Frontend C01 (`57f185f`, conjunto de 1 commit) | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | NÃO EXECUTADO PARA ESTE COMMIT | PENDENTE |
+| Backend C01 (`48bd69e`, conjunto de 4 commits) | CONCLUÍDA | APROVADA | PUBLICADO | APROVADO — Backend CI #24 | PENDENTE |
+| Frontend C01 (`57f185f`, conjunto de 1 commit) | CONCLUÍDA | APROVADA | PUBLICADO | NÃO VERIFICÁVEL | PENDENTE |
 
 Conclusão local, aprovação humana, publicação, CI e E2E são gates distintos.
 Nenhum resultado deve ser promovido automaticamente ao estado seguinte.
@@ -66,6 +66,18 @@ Nenhum resultado deve ser promovido automaticamente ao estado seguinte.
 ## Evidências e bloqueios
 
 As evidências detalhadas ficam nos relatórios de cada tarefa. T2 está concluída
-como proposta local, pendente de validação do usuário. T3–T5 estão concluídas
-localmente, sem validação remota. A publicação permanece bloqueada até aprovação
-humana explícita por repositório, branch e conjunto de commits.
+como proposta local. T3–T5 estão concluídas localmente; a publicação do C01 foi
+realizada após aprovação humana explícita por repositório, branch e conjunto de
+commits. A validação E2E permanece pendente.
+
+### Registro de publicação — 01/11/2026
+
+- Backend: `48bd69e02229c89c34a96c8970f7e5a8cb9eb9fc` publicado em
+  `origin/desenvolvimento/maturacao-darcy`; Backend CI #24 aprovado.
+- Frontend: `57f185fd46d20ccf7c1a6d1c0234098759daa84e` publicado em
+  `origin/desenvolvimento/maturacao-darcy`; CI não verificável pelo endpoint
+  público consultado.
+- Nenhuma migration, E2E remoto, IA real ou deploy foi executado.
+
+O plano autorizado do C02 está registrado em `C02_PROPOSAL.md`; esse documento
+é o registro canônico das tarefas C02-T1 a C02-T5 e não há backlog paralelo.

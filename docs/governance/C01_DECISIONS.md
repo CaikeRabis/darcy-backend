@@ -71,3 +71,13 @@
   dos dados.
 - Consequência: a tarefa é corrigida no escopo autorizado ou marcada como
   bloqueada, sem contornar guards.
+
+## D-2026-11-01-09 — Publicação controlada do C01
+
+- Tarefa: C01-T6
+- Decisão: publicar exclusivamente os conjuntos aprovados nas branches
+  `desenvolvimento/maturacao-darcy` dos dois repositórios.
+- Evidência: backend em `48bd69e`; frontend em `57f185f`; Backend CI #24
+  aprovado; CI do frontend não verificável pelo endpoint público consultado.
+- Consequência: a publicação do C01 está registrada como concluída; a
+  validação E2E permanece um estado independente e pendente.
