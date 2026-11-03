@@ -81,3 +81,26 @@ commits. A validação E2E permanece pendente.
 
 O plano autorizado do C02 está registrado em `C02_PROPOSAL.md`; esse documento
 é o registro canônico das tarefas C02-T1 a C02-T5 e não há backlog paralelo.
+
+## C03 — Histórico persistente e comparação de versões
+
+O plano canônico está em `C03_PROPOSAL.md`; não foi criado backlog paralelo.
+
+| ID | Objetivo | Estado | Evidência |
+|---|---|---|---|
+| C03-T1 | Baseline e correção das ressalvas C02 | CONCLUÍDA LOCALMENTE | Observador robusto e teste de autosave sem nova versão |
+| C03-T2 | API autenticada de versões | CONCLUÍDA LOCALMENTE | Rotas paginadas, ownership e metadados sem conteúdo |
+| C03-T3 | Histórico real no frontend | CONCLUÍDA LOCALMENTE | API e painel opt-in preservando fallback demonstrativo |
+| C03-T4 | Comparação visual | CONCLUÍDA LOCALMENTE | Comparação somente leitura com linhas adicionadas/removidas |
+| C03-T5 | Validação e governança | CONCLUÍDA LOCALMENTE | 199/73 testes, typechecks, builds e commits locais |
+
+### Gates independentes do C03
+
+| Repositório | Validação local | Aprovação humana | Publicação GitHub | CI | E2E |
+|---|---|---|---|---|---|
+| Backend | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | PENDENTE | PENDENTE |
+| Frontend | CONCLUÍDA | PENDENTE | NÃO PUBLICADO | PENDENTE | PENDENTE |
+
+Falhas de autenticação, ownership, concorrência ou persistência bloqueiam a
+publicação de alterações dependentes. A flag do histórico permanece desativada
+até aprovação e validação integrada.

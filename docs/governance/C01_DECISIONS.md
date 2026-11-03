@@ -81,3 +81,39 @@
   aprovado; CI do frontend não verificável pelo endpoint público consultado.
 - Consequência: a publicação do C01 está registrada como concluída; a
   validação E2E permanece um estado independente e pendente.
+
+## D-2026-11-03-10 — Listagem sem conteúdo integral
+
+- Tarefa: C03-T2
+- Decisão: a listagem de versões retorna somente metadados; o texto integral
+  exige consulta autenticada de uma versão específica.
+- Justificativa: reduzir exposição acidental e manter respostas paginadas
+  leves, sem substituir a autorização por uma relação Prisma.
+- Consequência: a UI busca o conteúdo apenas das duas versões selecionadas.
+
+## D-2026-11-03-11 — Histórico real opt-in
+
+- Tarefa: C03-T3 / C03-T4
+- Decisão: a tela real só é ativada para projetos `resumo-academico` quando
+  `VITE_RESUMO_HISTORY_ENABLED=enabled`; o exemplo local usa `disabled`.
+- Justificativa: preservar o fluxo demonstrativo e evitar exposição prematura
+  no Alpha até concluir a validação E2E.
+- Consequência: a ausência da flag não altera o comportamento anterior.
+
+## D-2026-11-03-12 — Comparação sem restauração
+
+- Tarefa: C03-T4
+- Decisão: a comparação é somente leitura; não oferece edição, merge ou
+  restauração de versões.
+- Justificativa: restauração exige comando autenticado, `expectedRevision`,
+  nova versão e evento transacional, reservados ao C04.
+- Consequência: nenhum estado persistido é alterado pela tela comparativa.
+
+## D-2026-11-03-13 — E2E remoto como gate independente
+
+- Tarefa: C03-T5
+- Decisão: testes locais aprovados não promovem automaticamente o estado para
+  homologado ou publicado; C03 precisa de E2E específico após autorização.
+- Justificativa: ownership, paginação real e payloads de conteúdo dependem de
+  PostgreSQL/Auth E2E e não foram escritos nesta ativação.
+- Consequência: commits permanecem locais e push aguarda aprovação humana.
