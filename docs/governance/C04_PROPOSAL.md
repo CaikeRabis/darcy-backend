@@ -4,7 +4,8 @@
 
 Estabilizar o histórico acadêmico publicado no ciclo C03 e implementar a
 restauração explícita, autenticada e transacional de versões textuais, sem
-ativar a funcionalidade em Alpha/produção e sem executar escrita remota.
+ativar a funcionalidade em Alpha/produção. A validação remota fica limitada ao
+ambiente sintético isolado `darcy-e2e`.
 
 ## Escopo e estado local
 
@@ -13,8 +14,8 @@ ativar a funcionalidade em Alpha/produção e sem executar escrita remota.
 | C04-T1 | Estabilizar fixture, observação e estados do histórico | VALIDADA LOCALMENTE | Código C03 auditado; regressões backend/frontend aprovadas |
 | C04-T2 | Serviço e comando autenticado de restauração | VALIDADA LOCALMENTE | POST opt-in, ownership, revisão, idempotência e transação |
 | C04-T3 | Integração de restauração no frontend | VALIDADA LOCALMENTE | Confirmação explícita, seleção única, hidratação e bloqueios |
-| C04-T4 | Testes offline e preparação E2E | VALIDADA LOCALMENTE | 204 testes backend, 74 frontend, typechecks e builds |
-| C04-T5 | Governança e encerramento local | EM ANDAMENTO | Documentos canônicos e proposta C05 preparados |
+| C04-T4 | Testes offline e validação E2E | VALIDADA E2E | PostgreSQL/Auth, frontend local opt-in e cleanup sintético comprovados |
+| C04-T5 | Governança e encerramento local | CONCLUÍDA LOCALMENTE | Gate 2 registrado; publicação continua sujeita a autorização separada |
 
 ## Contrato de restauração
 
@@ -49,12 +50,15 @@ da mesma operação com outra versão é rejeitada.
 
 O painel e a ação de restauração permanecem atrás de
 `VITE_RESUMO_HISTORY_ENABLED=enabled`; o padrão continua desativado. Nenhuma
-configuração Alpha/produção foi alterada. Não foram executadas migrations,
-testes E2E com escrita remota, deploy ou chamadas pagas de IA.
+configuração Alpha/produção foi alterada. Não houve deploy ou chamadas pagas
+de IA. A flag foi habilitada apenas no processo local do frontend ligado ao
+`darcy-e2e`, nunca em arquivo de ambiente ou configuração publicada.
 
 Foi criada apenas a migration local aditiva
 `20261103120000_resumo_academico_restoration_event`, necessária para o novo
-valor enum `restauracao`. Ela não foi aplicada a banco algum.
+valor enum `restauracao`. Ela foi aplicada exclusivamente ao `darcy-e2e` pelo
+launcher protegido, após os guards de Auth/DB/URL; Alpha e produção não foram
+acessados.
 
 ## Validação local
 
@@ -62,22 +66,24 @@ valor enum `restauracao`. Ela não foi aplicada a banco algum.
   build e `git diff --check` aprovados.
 - Frontend: 74 testes Vitest, TypeScript, build, typecheck E2E e
   `git diff --check` aprovados.
-- Nenhum teste remoto foi executado no C04.
+- Backend E2E: `test:e2e:resumo-restoration` aprovado com criação de duas
+  versões, restauração, idempotência, nova restauração, conflito 409,
+  ownership 404, preservação de estado e cleanup autenticado.
+- Frontend E2E local: `e2e/history/restoration.spec.ts` aprovado (2/2), com
+  confirmação/cancelamento, restauração explícita, revisão atualizada, evento
+  e versão de origem `restauracao` visíveis no painel e cleanup confirmado.
 
-## Gate E2E proposto
+## Gate E2E realizado
 
-Antes de qualquer execução remota, submeter autorização específica para o
-launcher protegido no `darcy-e2e`, com guards de Auth/DB/URL, migration
-explicitamente verificada, projeto sintético exclusivo e cleanup autenticado.
-Cobertura: restauração válida, ownership A/B, versão inexistente, 409,
-reenvio idempotente, duas restaurações distintas, rollback, preservação de
-seções e estados frontend de confirmação/cancelamento.
+Os guards de Auth/DB/URL confirmaram a identidade `darcy-e2e`, distinta de
+Alpha, antes da única migration pendente e de cada execução com escrita. O
+status posterior confirmou cinco migrations aplicadas e nenhuma pendência. Os
+projetos sintéticos foram excluídos autenticadamente (DELETE 204 seguido de
+GET 404); reconciliações posteriores não encontraram marcadores remanescentes.
 
 ## Ressalvas e próximos passos
 
-O fixture visual do C03 criou eventos sem `contentVersionRef`, por isso a
-assertion correspondente segue registrada como ressalva histórica. Estados
-vazio/erro e fluxo legado precisam de homologação visual futura. A
-proveniência de geração IA continua não comprovável pelo backend. O próximo
-ciclo proposto é C05, dedicado à validação E2E autorizada e à preparação de
-ativação gradual; não iniciado automaticamente.
+Estados vazio/erro e o fluxo visual com a flag desativada permanecem sem
+homologação visual nesta rodada. A proveniência de geração IA continua não
+comprovável pelo backend. A funcionalidade continua desativada em
+Alpha/produção; C05 não foi iniciado automaticamente.

@@ -130,10 +130,12 @@ O plano canônico está em `C04_PROPOSAL.md`; decisões em `C04_DECISIONS.md`.
 | C04-T1 | Estabilizar histórico e fixture | VALIDADA LOCALMENTE | Ressalva `contentVersionRef` preservada; parser e estados locais revisados |
 | C04-T2 | Serviço autenticado de restauração | VALIDADA LOCALMENTE | POST transacional, ownership, 409 e idempotência |
 | C04-T3 | Integração frontend opt-in | VALIDADA LOCALMENTE | Confirmação explícita, preservação e hidratação da revisão |
-| C04-T4 | Testes e preparação E2E | VALIDADA LOCALMENTE | Regressões aprovadas; nenhum teste remoto executado |
-| C04-T5 | Governança e encerramento | EM ANDAMENTO | Documentos e proposta C05 preparados |
+| C04-T4 | Testes e validação E2E | VALIDADA E2E | Restauração PostgreSQL/Auth e painel local opt-in aprovados; cleanup comprovado |
+| C04-T5 | Governança e encerramento | CONCLUÍDA LOCALMENTE | Gate 2 documentado; publicação ainda requer autorização humana |
 
-O C04 permanece não publicado e não homologado. A migration local
-`20261103120000_resumo_academico_restoration_event` é aditiva e não foi aplicada
-a nenhum banco. Push, deploy, Alpha/produção, IA paga e C05 continuam fora do
-escopo autorizado.
+O C04 permanece não publicado e não homologado para Alpha/produção. A migration
+aditiva `20261103120000_resumo_academico_restoration_event` foi aplicada apenas
+ao `darcy-e2e`; o runner de restauração aprovou e removeu seus projetos
+sintéticos. Push, deploy, Alpha/produção, IA paga e C05 continuam fora do
+escopo autorizado. Estados visuais vazio/erro e a flag desativada são
+pendências explícitas antes de qualquer ativação.

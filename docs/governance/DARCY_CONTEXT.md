@@ -97,23 +97,25 @@ explícita.
 
 ## Estado do ciclo C04
 
-- C04-T1 a C04-T4 foram implementadas e validadas localmente; C04-T5 está em
-  andamento documental.
+- C04-T1 a C04-T5 foram concluídas localmente; T4 também foi validada em
+  PostgreSQL/Auth no `darcy-e2e` com cleanup sintético comprovado.
 - Backend: comando autenticado de restauração com `expectedRevision`,
   `operationId`, ownership, transação serializável, evento `restauracao`, nova
   versão e linhagem `previousVersionId`.
 - Frontend: seleção única para restauração, confirmação explícita, bloqueio de
   conflito/autosave pendente e hidratação da revisão devolvida pelo backend.
-- Migration local `20261103120000_resumo_academico_restoration_event` criada
-  somente para o enum de evento; não aplicada em E2E, Alpha ou produção.
+- Migration `20261103120000_resumo_academico_restoration_event` aplicada
+  exclusivamente no `darcy-e2e` para o enum de evento; não aplicada em Alpha
+  ou produção.
 - Regressões: backend 204 testes; frontend 74 testes; TypeScript,
   test-typecheck, builds, Prisma validate, typecheck E2E e `git diff --check`
   aprovados.
-- Nenhum push, deploy, teste E2E remoto, migration remota ou chamada paga de IA
-  foi executado no C04.
-- A assertion visual de `contentVersionRef` do C03 continua uma ressalva
-  histórica; estados vazio/erro e fluxo legado ainda requerem homologação
-  visual. C05 foi apenas proposto e não iniciado.
+- Nenhum push, deploy, migration fora do E2E ou chamada paga de IA foi
+  executado no C04.
+- O Gate 2 comprovou restauração, idempotência, 409, ownership, versão ligada
+  ao evento e confirmação visual local. Estados vazio/erro e fluxo legado com
+  a flag desativada ainda requerem homologação visual. C05 foi apenas proposto
+  e não iniciado.
 
 ## Referências técnicas
 

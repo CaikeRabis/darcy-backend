@@ -34,5 +34,13 @@ configuração de Alpha/produção é modificada neste ciclo.
 ## D-2026-11-03-C04-06 — Gate remoto separado
 
 Os testes locais aprovados não equivalem a validação PostgreSQL/Auth E2E. A
-próxima execução remota exige autorização específica, guards comprovados e
-cleanup restrito; C05 não é iniciado automaticamente.
+execução remota exige autorização específica, guards comprovados e cleanup
+restrito; C05 não é iniciado automaticamente.
+
+## D-2026-11-08-C04-07 — Gate 2 limitado ao E2E sintético
+
+A migration `20261103120000_resumo_academico_restoration_event` e os testes de
+restauração foram executados exclusivamente em `darcy-e2e`. O frontend usou a
+flag somente no processo local. O sucesso E2E não autoriza ativação em Alpha
+ou produção, nem substitui a homologação visual dos estados vazio, erro e
+flag desativada.
