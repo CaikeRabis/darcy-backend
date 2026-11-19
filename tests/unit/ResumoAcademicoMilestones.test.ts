@@ -229,6 +229,23 @@ describe('marcos acadêmicos transacionais', () => {
     expect(mocks.createTextVersion).not.toHaveBeenCalled()
   })
 
+  it('não transforma a alteração de status do autosave em confirmação verificável', async () => {
+    const previous = makeProgress()
+    previous.contexto.texto_sugerido = 'Texto pronto para revisão.'
+    const next = structuredClone(previous)
+    next.contexto.status = 'aprovado'
+    mocks.progressFindUnique.mockResolvedValue({ progress: previous, revision: 2 })
+    mocks.progressUpdateMany.mockResolvedValue({ count: 1 })
+
+    await expect(upsertResumoAcademicoProgress('project-owned', 'profile-a', next, 2))
+      .resolves.toEqual({ status: 'saved', progress: next, revision: 3 })
+
+    expect(mocks.historyCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ type: 'secao_aprovada' }),
+    }))
+    expect(mocks.createTextVersion).not.toHaveBeenCalled()
+  })
+
   it('mantém compatibilidade com projeto legado sem linha de progresso', async () => {
     const progress = makeProgress()
     mocks.progressFindUnique.mockResolvedValue(null)

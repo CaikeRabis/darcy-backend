@@ -18,6 +18,7 @@ import {
   ResumoAcademicoEventActor,
   ResumoAcademicoEventType,
   ResumoAcademicoSection,
+  ResumoAcademicoTextOrigin,
   Prisma,
 } from '@prisma/client'
 import { isDeepStrictEqual } from 'node:util'
@@ -103,6 +104,106 @@ export interface ResumoAcademicoProgressSnapshot {
   progress: ResumoAcademicoState | null
   revision: number
 }
+
+/**
+ * Limites defensivos do contrato interno de contexto científico. Eles evitam
+ * que uma futura orientação receba um JSONB inteiro ou um campo anormalmente
+ * grande sem transformar conteúdo truncado em evidência científica.
+ */
+export const RESUMO_SCIENTIFIC_CONTEXT_MAX_FIELD_LENGTH = 4_000
+export const RESUMO_SCIENTIFIC_CONTEXT_MAX_METHODOLOGY_ITEMS = 30
+export const RESUMO_SCIENTIFIC_CONTEXT_MAX_METHODOLOGY_LENGTH = 8_000
+
+export const ResumoScientificContextDataStateSchema = z.enum([
+  'confirmado',
+  'rascunho_persistido',
+  'ausente',
+  'invalido',
+])
+
+export const ResumoScientificContextDataOriginSchema = z.enum([
+  'decisao_autoral',
+  'resposta_usuario_persistida',
+  'classificacao_cnpq_persistida',
+  'identificacao_persistida',
+  'nenhuma',
+  'progresso_invalido',
+])
+
+const ResumoScientificContextTextFieldSchema = z.object({
+  state: ResumoScientificContextDataStateSchema,
+  origin: ResumoScientificContextDataOriginSchema,
+  value: z.string().max(RESUMO_SCIENTIFIC_CONTEXT_MAX_FIELD_LENGTH).nullable(),
+}).strict()
+
+const ResumoScientificContextSpecificObjectivesSchema = z.object({
+  state: ResumoScientificContextDataStateSchema,
+  origin: ResumoScientificContextDataOriginSchema,
+  values: z.array(z.string().min(1).max(RESUMO_SCIENTIFIC_CONTEXT_MAX_FIELD_LENGTH))
+    .max(RESUMO_SCIENTIFIC_CONTEXT_MAX_METHODOLOGY_ITEMS),
+}).strict()
+
+const ResumoScientificContextMethodologySchema = z.object({
+  state: ResumoScientificContextDataStateSchema,
+  origin: ResumoScientificContextDataOriginSchema,
+  items: z.array(z.object({
+    questionId: z.string().min(1).max(120),
+    value: z.string().min(1).max(RESUMO_SCIENTIFIC_CONTEXT_MAX_FIELD_LENGTH),
+  }).strict()).max(RESUMO_SCIENTIFIC_CONTEXT_MAX_METHODOLOGY_ITEMS),
+}).strict()
+
+const ResumoScientificClassificationItemSchema = z.object({
+  codigo: z.string().min(1),
+  nome: z.string().min(1),
+  nivel: z.enum(['grande_area', 'area', 'subarea', 'especialidade']),
+  caminhoCodigos: z.array(z.string().min(1)).min(1),
+}).strict()
+
+const ResumoScientificContextClassificationSchema = z.object({
+  state: ResumoScientificContextDataStateSchema,
+  origin: ResumoScientificContextDataOriginSchema,
+  value: z.object({
+    versaoCatalogo: z.string().min(1),
+    primaria: ResumoScientificClassificationItemSchema,
+    correlatas: z.array(ResumoScientificClassificationItemSchema),
+    observacaoInterdisciplinar: z.string().min(1).max(1_000).optional(),
+  }).strict().nullable(),
+}).strict()
+
+const ResumoScientificContextResearchStageSchema = z.object({
+  state: ResumoScientificContextDataStateSchema,
+  origin: ResumoScientificContextDataOriginSchema,
+  value: z.enum([
+    'nao_iniciado',
+    'em_andamento',
+    'resultados_parciais',
+    'concluido',
+  ]).nullable(),
+}).strict()
+
+export const ResumoScientificContextSnapshotSchema = z.object({
+  projectId: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+  progressState: ResumoScientificContextDataStateSchema,
+  researchProblem: ResumoScientificContextTextFieldSchema,
+  generalObjective: ResumoScientificContextTextFieldSchema,
+  specificObjectives: ResumoScientificContextSpecificObjectivesSchema,
+  methodology: ResumoScientificContextMethodologySchema,
+  scientificClassification: ResumoScientificContextClassificationSchema,
+  researchStage: ResumoScientificContextResearchStageSchema,
+  authorialDecisions: z.array(DecisaoAutoralSchema).max(1),
+}).strict()
+
+export type ResumoScientificContextSnapshot = z.infer<typeof ResumoScientificContextSnapshotSchema>
+
+/**
+ * Não há rota pública nesta etapa. O resultado de conflito preserva a
+ * semântica que uma rota futura deverá mapear para o mesmo HTTP 409 já usado
+ * pelo progresso, sem tornar uma revisão divergente em leitura confirmada.
+ */
+export type ResumoScientificContextSnapshotLookup =
+  | { status: 'found'; snapshot: ResumoScientificContextSnapshot }
+  | { status: 'conflict'; revision: number }
 
 export type ResumoAcademicoProgressSaveResult =
   | { status: 'saved'; progress: ResumoAcademicoState; revision: number }
@@ -390,6 +491,200 @@ function toScientificClassificationContext(
   }
 }
 
+function scientificTextField(
+  rawValue: string | undefined,
+  isConfirmed: boolean,
+): ResumoScientificContextSnapshot['researchProblem'] {
+  const value = rawValue?.trim() ?? ''
+  if (!value) {
+    return { state: 'ausente', origin: 'nenhuma', value: null }
+  }
+  if (value.length > RESUMO_SCIENTIFIC_CONTEXT_MAX_FIELD_LENGTH) {
+    return { state: 'invalido', origin: 'resposta_usuario_persistida', value: null }
+  }
+  return {
+    state: isConfirmed ? 'confirmado' : 'rascunho_persistido',
+    origin: 'resposta_usuario_persistida',
+    value,
+  }
+}
+
+function specificObjectivesField(
+  rawValue: string | undefined,
+  isConfirmed: boolean,
+): ResumoScientificContextSnapshot['specificObjectives'] {
+  const raw = rawValue?.trim() ?? ''
+  if (!raw) {
+    return { state: 'ausente', origin: 'nenhuma', values: [] }
+  }
+  if (raw.length > RESUMO_SCIENTIFIC_CONTEXT_MAX_METHODOLOGY_LENGTH) {
+    return { state: 'invalido', origin: 'resposta_usuario_persistida', values: [] }
+  }
+
+  const values = raw.split(/[;\n]+/).map((value) => value.trim()).filter(Boolean)
+  if (
+    values.length === 0 ||
+    values.length > RESUMO_SCIENTIFIC_CONTEXT_MAX_METHODOLOGY_ITEMS ||
+    values.some((value) => value.length > RESUMO_SCIENTIFIC_CONTEXT_MAX_FIELD_LENGTH)
+  ) {
+    return { state: 'invalido', origin: 'resposta_usuario_persistida', values: [] }
+  }
+
+  return {
+    state: isConfirmed ? 'confirmado' : 'rascunho_persistido',
+    origin: 'resposta_usuario_persistida',
+    values,
+  }
+}
+
+function methodologyField(
+  answers: Record<string, string>,
+  isConfirmed: boolean,
+): ResumoScientificContextSnapshot['methodology'] {
+  const items = Object.entries(answers)
+    .map(([questionId, value]) => ({ questionId: questionId.trim(), value: value.trim() }))
+    .filter((item) => item.questionId && item.value)
+    .sort((left, right) => left.questionId.localeCompare(right.questionId))
+
+  if (items.length === 0) {
+    return { state: 'ausente', origin: 'nenhuma', items: [] }
+  }
+  if (
+    items.length > RESUMO_SCIENTIFIC_CONTEXT_MAX_METHODOLOGY_ITEMS ||
+    items.some((item) => item.questionId.length > 120 || item.value.length > RESUMO_SCIENTIFIC_CONTEXT_MAX_FIELD_LENGTH) ||
+    items.reduce((total, item) => total + item.value.length, 0) > RESUMO_SCIENTIFIC_CONTEXT_MAX_METHODOLOGY_LENGTH
+  ) {
+    return { state: 'invalido', origin: 'resposta_usuario_persistida', items: [] }
+  }
+
+  return {
+    state: isConfirmed ? 'confirmado' : 'rascunho_persistido',
+    origin: 'resposta_usuario_persistida',
+    items,
+  }
+}
+
+function emptyScientificContextSnapshot(
+  projectId: string,
+  revision: number,
+  progressState: 'ausente' | 'invalido',
+): ResumoScientificContextSnapshot {
+  const isInvalid = progressState === 'invalido'
+  const origin = isInvalid ? 'progresso_invalido' : 'nenhuma'
+  const state = isInvalid ? 'invalido' : 'ausente'
+
+  return ResumoScientificContextSnapshotSchema.parse({
+    projectId,
+    revision,
+    progressState,
+    researchProblem: { state, origin, value: null },
+    generalObjective: { state, origin, value: null },
+    specificObjectives: { state, origin, values: [] },
+    methodology: { state, origin, items: [] },
+    scientificClassification: { state, origin, value: null },
+    researchStage: { state, origin, value: null },
+    authorialDecisions: [],
+  })
+}
+
+async function findVerifiedSectionConfirmations(
+  projectId: string,
+  progress: ResumoAcademicoState,
+): Promise<ReadonlySet<ResumoAcademicoSection>> {
+  const candidates = RESUMO_SECTIONS.filter((section) => (
+    progress[section].status === 'aprovado' && progress[section].texto_sugerido.trim()
+  ))
+
+  const verified = await Promise.all(candidates.map(async (section) => {
+    const version = await prisma.resumoAcademicoTextVersion.findFirst({
+      where: {
+        projectId,
+        scopeKey: `secao.${section}`,
+        section,
+        origin: ResumoAcademicoTextOrigin.pesquisador,
+        content: progress[section].texto_sugerido.trim(),
+        sourceEventId: { not: null },
+        sourceEvent: {
+          is: {
+            type: ResumoAcademicoEventType.secao_aprovada,
+            section,
+            contentVersionRef: { not: null },
+          },
+        },
+      },
+      select: { id: true },
+    })
+    return version ? section : null
+  }))
+
+  return new Set(verified.filter((section): section is ResumoAcademicoSection => section !== null))
+}
+
+async function createResumoScientificContextSnapshot(
+  projectId: string,
+  revision: number,
+  persistedProgress: Prisma.JsonValue | null,
+): Promise<ResumoScientificContextSnapshot> {
+  if (persistedProgress === null) {
+    return emptyScientificContextSnapshot(projectId, revision, 'ausente')
+  }
+
+  const parsed = ResumoAcademicoStateSchema.safeParse(persistedProgress)
+  if (!parsed.success) {
+    return emptyScientificContextSnapshot(projectId, revision, 'invalido')
+  }
+
+  const progress = parsed.data
+  const verifiedSectionConfirmations = await findVerifiedSectionConfirmations(projectId, progress)
+  const decision = progress.decisoes_autorais?.find((item) => item.id === 'contexto_problema_central')
+  const decisionProblem = decision?.escolha.trim()
+  const researchProblem = decisionProblem
+    ? {
+        state: 'confirmado' as const,
+        origin: 'decisao_autoral' as const,
+        value: decisionProblem,
+      }
+    : scientificTextField(
+        progress.contexto.respostas_usuario.problema_central,
+        verifiedSectionConfirmations.has('contexto'),
+      )
+  const classification = progress.classificacao_cnpq
+
+  return ResumoScientificContextSnapshotSchema.parse({
+    projectId,
+    revision,
+    // Um JSONB válido somente comprova persistência; a confirmação humana é
+    // deliberadamente calculada campo a campo abaixo.
+    progressState: 'rascunho_persistido',
+    researchProblem,
+    generalObjective: scientificTextField(
+      progress.objetivo.respostas_usuario.objetivo_geral,
+      verifiedSectionConfirmations.has('objetivo'),
+    ),
+    specificObjectives: specificObjectivesField(
+      progress.objetivo.respostas_usuario.objetivos_especificos,
+      verifiedSectionConfirmations.has('objetivo'),
+    ),
+    methodology: methodologyField(
+      progress.metodologia.respostas_usuario,
+      verifiedSectionConfirmations.has('metodologia'),
+    ),
+    scientificClassification: classification
+      ? {
+          state: 'confirmado',
+          origin: 'classificacao_cnpq_persistida',
+          value: toScientificClassificationContext(classification),
+        }
+      : { state: 'ausente', origin: 'nenhuma', value: null },
+    researchStage: {
+      state: progress.identificacao_inicial_concluida ? 'confirmado' : 'rascunho_persistido',
+      origin: 'identificacao_persistida',
+      value: progress.estagio_pesquisa,
+    },
+    authorialDecisions: progress.decisoes_autorais ?? [],
+  })
+}
+
 function getPersistedClassificationContext(progress: Prisma.JsonValue): ScientificClassificationContext | null {
   if (typeof progress !== 'object' || progress === null || Array.isArray(progress)) return null
 
@@ -438,6 +733,38 @@ export async function getOwnedResumoScientificContext(
   return {
     decisaoAutoralContextual: getPersistedAutoralDecisionContext(persisted.progress),
     classificacaoCnpqContextual: getPersistedClassificationContext(persisted.progress),
+  }
+}
+
+/**
+ * Recupera um recorte normalizado do progresso pertencente ao pesquisador.
+ * Esta leitura não grava eventos, versões ou progresso e não presume que um
+ * rascunho persistido corresponda a uma decisão confirmada.
+ */
+export async function getOwnedResumoScientificContextSnapshot(
+  projectId: string,
+  profileId: string,
+  expectedRevision?: number,
+): Promise<ResumoScientificContextSnapshotLookup | undefined> {
+  const normalizedExpectedRevision = expectedRevision === undefined
+    ? undefined
+    : z.number().int().nonnegative().parse(expectedRevision)
+  const project = await findOwnedResumoAcademicoProject(prisma, projectId, profileId)
+  if (!project) return undefined
+
+  const persisted = await prisma.resumoAcademicoProgress.findUnique({
+    where: { projectId: project.id },
+    select: { progress: true, revision: true },
+  })
+  const revision = persisted?.revision ?? 0
+
+  if (normalizedExpectedRevision !== undefined && normalizedExpectedRevision !== revision) {
+    return { status: 'conflict', revision }
+  }
+
+  return {
+    status: 'found',
+    snapshot: await createResumoScientificContextSnapshot(project.id, revision, persisted?.progress ?? null),
   }
 }
 
