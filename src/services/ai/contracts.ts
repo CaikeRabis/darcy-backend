@@ -35,6 +35,13 @@ export interface AIGenerationRequest {
   history: AIMessage[]
   mode: 'chat' | 'single-turn'
   options: AIGenerationOptions
+  /** Formato estruturado específico da operação; ausente mantém o contrato legado. */
+  responseFormat?: {
+    name: string
+    description: string
+    schema: Record<string, unknown>
+    strict: boolean
+  }
 }
 
 export type AIErrorCode =

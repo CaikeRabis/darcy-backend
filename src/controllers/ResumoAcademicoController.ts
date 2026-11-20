@@ -32,6 +32,8 @@ import {
   getOwnedResumoAcademicoTextVersion,
   listOwnedResumoAcademicoTextVersionMetadata,
 } from '../services/ResumoAcademicoTextVersionService'
+import { isScientificDiagnosisEnabled } from '../config/scientificDiagnosis'
+import { ScientificDiagnosisService } from '../services/ScientificDiagnosisService'
 import { ResumoAcademicoSection } from '@prisma/client'
 
 const ProjectParamsSchema = z.object({
@@ -56,6 +58,11 @@ const VersionsQuerySchema = z.object({
   section: z.nativeEnum(ResumoAcademicoSection).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   beforeVersionNumber: z.coerce.number().int().min(1).optional(),
+}).strict()
+
+const ScientificDiagnosisRequestSchema = z.object({
+  expectedRevision: z.number().int().nonnegative(),
+  scope: z.literal('resumo'),
 }).strict()
 
 function getAuthenticatedProfileId(request: Request): string | null {
@@ -133,6 +140,76 @@ function sendInvalidMilestone(response: Response, message: string): void {
 }
 
 export class ResumoAcademicoController {
+  static async scientificDiagnosis(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = ProjectParamsSchema.safeParse(request.params)
+    const bodyResult = ScientificDiagnosisRequestSchema.safeParse(request.body)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+
+    if (!isScientificDiagnosisEnabled()) {
+      response.status(404).json({
+        ok: false,
+        error: { code: 'NOT_FOUND', message: 'Endpoint não encontrado.' },
+      })
+      return
+    }
+
+    if (!paramsResult.success || !bodyResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const result = await new ScientificDiagnosisService().diagnose(
+        paramsResult.data.projectId,
+        profileId,
+        bodyResult.data.expectedRevision,
+        bodyResult.data.scope,
+      )
+
+      if (result.status === 'not_found') {
+        sendProjectNotFound(response)
+        return
+      }
+      if (result.status === 'conflict') {
+        response.status(409).json({
+          ok: false,
+          error: {
+            code: 'SCIENTIFIC_CONTEXT_REVISION_CONFLICT',
+            message: 'O contexto científico foi alterado. Recarregue a versão mais recente antes de analisar novamente.',
+          },
+          revision: result.revision,
+        })
+        return
+      }
+      if (result.status === 'invalid_provider_response') {
+        response.status(502).json({
+          ok: false,
+          error: { code: 'SCIENTIFIC_DIAGNOSIS_INVALID_RESPONSE', message: 'O diagnóstico não pôde ser validado.' },
+        })
+        return
+      }
+      if (result.status === 'provider_error') {
+        response.status(502).json({
+          ok: false,
+          error: { code: result.code, message: result.message },
+        })
+        return
+      }
+
+      response.status(200).json({ ok: true, data: result.diagnosis })
+    } catch {
+      response.status(500).json({
+        ok: false,
+        error: { code: 'SCIENTIFIC_DIAGNOSIS_FAILED', message: 'Não foi possível gerar o diagnóstico científico.' },
+      })
+    }
+  }
+
   static async listVersions(request: Request, response: Response): Promise<void> {
     const profileId = getAuthenticatedProfileId(request)
     const paramsResult = ProjectParamsSchema.safeParse(request.params)

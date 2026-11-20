@@ -109,6 +109,13 @@ export class OpenAIProvider implements AIProvider {
       { role: 'user', content: request.prompt },
     ]
 
+    const responseFormat = request.responseFormat ?? {
+      name: 'darcy_response',
+      description: 'Resposta estruturada do orientador acadêmico DARCY.',
+      strict: false,
+      schema: DARCY_RESPONSE_JSON_SCHEMA,
+    }
+
     return this.client.responses.create({
       model: this.model,
       instructions: request.systemInstruction,
@@ -120,10 +127,7 @@ export class OpenAIProvider implements AIProvider {
       text: {
         format: {
           type: 'json_schema',
-          name: 'darcy_response',
-          description: 'Resposta estruturada do orientador acadêmico DARCY.',
-          strict: false,
-          schema: DARCY_RESPONSE_JSON_SCHEMA,
+          ...responseFormat,
         },
       },
     })

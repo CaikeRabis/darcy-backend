@@ -20,6 +20,7 @@ import { requireProfile } from '../middlewares/requireProfile'
 
 const router = Router()
 
+router.post('/:projectId/scientific-diagnosis', requireAuth, requireProfile, ResumoAcademicoController.scientificDiagnosis)
 router.get('/:projectId/history', requireAuth, requireProfile, ResumoAcademicoController.getHistory)
 router.get('/:projectId/versions/:versionId', requireAuth, requireProfile, ResumoAcademicoController.getVersion)
 router.post('/:projectId/versions/:versionId/restore', requireAuth, requireProfile, ResumoAcademicoController.restoreVersion)

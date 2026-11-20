@@ -242,6 +242,23 @@ export class AIService {
     }
   }
 
+  /**
+   * Executa uma geração estruturada para serviços científicos especializados.
+   * A validação semântica pertence ao serviço chamador; este método apenas
+   * reutiliza o provider configurado e mantém o mapeamento de erros existente.
+   */
+  public async generateScientificDiagnosis(
+    request: AIGenerationRequest,
+  ): Promise<ApiResponse<string>> {
+    try {
+      const rawText = await this.provider.generate(request)
+      this.logProviderSuccess()
+      return { ok: true, data: rawText }
+    } catch (error) {
+      return this.handleError(error)
+    }
+  }
+
   public async executeQuickAction(
     actionId: QuickActionId,
     context: ProjectContext,

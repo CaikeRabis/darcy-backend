@@ -116,7 +116,7 @@ describe('rotas de IA protegidas', () => {
     })
   })
 
-  it.each(['/api/darcy/chat', '/api/darcy/quick-action'])(
+  it.each(['/api/darcy/chat', '/api/darcy/quick-action', '/api/v1/modulos/resumo-academico/projeto/scientific-diagnosis'])(
     '%s rejeita POST sem Bearer com 401 antes do controller de IA',
     async (path) => {
       const result = await postRequest(path, {})

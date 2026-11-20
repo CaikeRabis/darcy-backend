@@ -32,6 +32,7 @@ import {
   RateLimitError,
 } from 'openai'
 import { OpenAIProvider } from '../../src/services/ai/providers/openai.provider'
+import { SCIENTIFIC_DIAGNOSIS_JSON_SCHEMA } from '../../src/schemas/scientificDiagnosis.schema'
 
 const request = {
   systemInstruction: 'Instrução curta de teste.',
@@ -85,6 +86,29 @@ describe('OpenAIProvider com SDK mockado', () => {
     const providerRequest = openAIState.create.mock.calls[0]?.[0] as Record<string, unknown>
     expect(providerRequest).not.toHaveProperty('top_p')
     expect(providerRequest).not.toHaveProperty('top_k')
+  })
+
+  it('seleciona o schema científico quando a operação o solicita', async () => {
+    openAIState.create.mockResolvedValue({ output_text: '{"findings":[]}', output: [] })
+    const provider = new OpenAIProvider()
+
+    await provider.generate({
+      ...request,
+      responseFormat: {
+        name: 'scientific_diagnosis',
+        description: 'Diagnóstico científico de teste.',
+        strict: true,
+        schema: SCIENTIFIC_DIAGNOSIS_JSON_SCHEMA,
+      },
+    })
+
+    expect(openAIState.create).toHaveBeenCalledWith(expect.objectContaining({
+      text: { format: expect.objectContaining({
+        name: 'scientific_diagnosis',
+        strict: true,
+        schema: SCIENTIFIC_DIAGNOSIS_JSON_SCHEMA,
+      }) },
+    }))
   })
 
   it('expõe conclusão e usage ao runner sem alterar generate()', async () => {
