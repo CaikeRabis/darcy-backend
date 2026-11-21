@@ -27,6 +27,7 @@ import {
   getConfiguredAIModel,
   getConfiguredAIProviderName,
 } from './services/ai/providerFactory'
+import { isScientificDiagnosisFakeEnabled } from './config/scientificDiagnosisProvider'
 
 loadRuntimeEnvironment()
 
@@ -44,7 +45,12 @@ try {
   process.exit(1)
 }
 
-const server = app.listen(PORT, () => {
+const fakeScientificDiagnosis = isScientificDiagnosisFakeEnabled()
+const server = fakeScientificDiagnosis
+  ? app.listen(PORT, '127.0.0.1', onServerReady)
+  : app.listen(PORT, onServerReady)
+
+function onServerReady() {
   const provider = getConfiguredAIProviderName()
   const model = getConfiguredAIModel()
 
@@ -58,7 +64,7 @@ const server = app.listen(PORT, () => {
 ║  Modelo  : ${model.padEnd(33)}║
 ╚═══════════════════════════════════════════╝
   `)
-})
+}
 
 /* ------------------------------------------------------------------ */
 /* Graceful Shutdown                                                   */

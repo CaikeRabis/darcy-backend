@@ -1,6 +1,8 @@
 import type { ApiResponse } from '../types/darcy.types'
 import type { AIGenerationRequest } from './ai/contracts'
 import { AIService } from './ai/AIService'
+import { assertScientificDiagnosisProviderConfiguration } from '../config/scientificDiagnosisProvider'
+import { ScientificDiagnosisFakeGenerator } from './ScientificDiagnosisFakeGenerator'
 import {
   ScientificDiagnosisProviderResponseSchema,
   ScientificDiagnosisSchema,
@@ -35,6 +37,14 @@ Categorias permitidas: informacao_insuficiente, alinhamento, tensao, contradicao
 
 const DEFAULT_GENERATOR: ScientificDiagnosisGenerator = {
   generate: (request) => AIService.getInstance().generateScientificDiagnosis(request),
+}
+
+export function createScientificDiagnosisGenerator(
+  environmentVariables: NodeJS.ProcessEnv = process.env,
+): ScientificDiagnosisGenerator {
+  return assertScientificDiagnosisProviderConfiguration(environmentVariables) === 'fake'
+    ? new ScientificDiagnosisFakeGenerator()
+    : DEFAULT_GENERATOR
 }
 
 interface EvidenceEntry {
@@ -142,7 +152,7 @@ function finalizeDiagnosis(
 }
 
 export class ScientificDiagnosisService {
-  constructor(private readonly generator: ScientificDiagnosisGenerator = DEFAULT_GENERATOR) {}
+  constructor(private readonly generator: ScientificDiagnosisGenerator = createScientificDiagnosisGenerator()) {}
 
   async diagnose(
     projectId: string,

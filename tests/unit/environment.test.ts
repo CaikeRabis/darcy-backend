@@ -3,7 +3,7 @@ import {
   EnvironmentConfigurationError,
   validateEnvironment,
 } from '../../src/config/environment'
-import { getE2EEnvironmentIdentity } from '../../src/config/e2eEnvironment'
+import { getE2EEnvironmentIdentity, assertE2EOperationalIdentity } from '../../src/config/e2eEnvironment'
 
 function createValidEnvironment(): NodeJS.ProcessEnv {
   return {
@@ -13,6 +13,27 @@ function createValidEnvironment(): NodeJS.ProcessEnv {
     DATABASE_URL: 'postgresql://user:password@localhost:5432/darcy',
     SUPABASE_URL: 'https://example.supabase.co',
     SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key',
+    AI_PROVIDER: 'openai',
+    OPENAI_API_KEY: 'test-openai-key',
+  }
+}
+
+function createLocalEnvironment(): NodeJS.ProcessEnv {
+  return {
+    NODE_ENV: 'test',
+    PORT: '3001',
+    CORS_ORIGIN: 'http://127.0.0.1:5174',
+    DARCY_ENV_FILE: '.env.e2e.local',
+    DARCY_E2E_GUARD: 'enabled',
+    DARCY_E2E_LOCAL_STACK_ID: 'darcy-e2e-c0361',
+    DARCY_E2E_LOCAL_GATEWAY_PORT: '55421',
+    DARCY_E2E_LOCAL_DATABASE_PORT: '55422',
+    DARCY_E2E_LOCAL_DIRECT_PORT: '55422',
+    DARCY_ALPHA_SUPABASE_PROJECT_REF: 'alphaproject1',
+    SUPABASE_URL: 'http://127.0.0.1:55421',
+    DATABASE_URL: 'postgresql://postgres:password@127.0.0.1:55422/postgres',
+    DIRECT_URL: 'postgresql://postgres:password@127.0.0.1:55422/postgres',
+    SUPABASE_PUBLISHABLE_KEY: 'local-publishable-key',
     AI_PROVIDER: 'openai',
     OPENAI_API_KEY: 'test-openai-key',
   }
@@ -130,5 +151,53 @@ describe('validação de ambiente', () => {
     environment.DIRECT_URL = 'postgresql://postgres:password@db.otherproject1.supabase.co:5432/postgres'
 
     expect(() => validateEnvironment(environment)).toThrow('conexão direta')
+  })
+
+  it('reconhece identidade local sintaticamente coerente sem declarar prova operacional', () => {
+    const environment = createLocalEnvironment()
+    expect(getE2EEnvironmentIdentity(environment)).toEqual({
+      supabaseProjectRef: 'darcy-e2e-c0361',
+      mode: 'local',
+      localStackId: 'darcy-e2e-c0361',
+    })
+    expect(() => assertE2EOperationalIdentity(environment)).toThrow('comprovação operacional')
+  })
+
+  it('aceita identidade local operacional somente com marcador separado', () => {
+    const environment = createLocalEnvironment()
+    environment.DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED = 'enabled'
+    expect(assertE2EOperationalIdentity(environment)).toMatchObject({ mode: 'local', localStackId: 'darcy-e2e-c0361' })
+  })
+
+  it.each([
+    ['DARCY_E2E_LOCAL_STACK_ID', ''],
+    ['DARCY_E2E_LOCAL_STACK_ID', 'supabase'],
+    ['DARCY_E2E_LOCAL_STACK_ID', 'darcy-e2e-default'],
+    ['DARCY_ENV_FILE', '.env'],
+    ['DARCY_E2E_LOCAL_GATEWAY_PORT', '54321'],
+    ['DARCY_E2E_LOCAL_DATABASE_PORT', ''],
+    ['SUPABASE_URL', 'https://darcy-e2e-c0361.supabase.co'],
+    ['DATABASE_URL', 'postgresql://postgres:password@db.e2eproject1.supabase.co:5432/postgres'],
+    ['DIRECT_URL', 'postgresql://postgres:password@127.0.0.1:5432/postgres'],
+  ])('rejeita configuração local inválida em %s', (name, value) => {
+    const environment = createLocalEnvironment()
+    environment[name] = value
+    expect(() => getE2EEnvironmentIdentity(environment)).toThrow()
+  })
+
+  it('rejeita mistura entre identidade local e referência remota', () => {
+    const environment = createLocalEnvironment()
+    environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'e2eproject1'
+    expect(() => getE2EEnvironmentIdentity(environment)).toThrow('ambígua')
+  })
+
+  it('rejeita identidade local sem guarda ou em produção', () => {
+    const withoutGuard = createLocalEnvironment()
+    withoutGuard.DARCY_E2E_GUARD = 'disabled'
+    expect(() => getE2EEnvironmentIdentity(withoutGuard)).toThrow('DARCY_E2E_GUARD')
+
+    const production = createLocalEnvironment()
+    production.NODE_ENV = 'production'
+    expect(() => getE2EEnvironmentIdentity(production)).toThrow('não pode ser usada em produção')
   })
 })

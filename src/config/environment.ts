@@ -16,6 +16,7 @@
 import { validateCorsConfiguration } from './cors'
 import { getE2EEnvironmentIdentity } from './e2eEnvironment'
 import { getConfiguredAIProviderName } from '../services/ai/providerFactory'
+import { assertScientificDiagnosisProviderConfiguration } from './scientificDiagnosisProvider'
 
 export class EnvironmentConfigurationError extends Error {
   constructor(message: string) {
@@ -58,11 +59,14 @@ export function validateEnvironment(
   requireEnvironmentVariable(environmentVariables, 'SUPABASE_URL')
   requireEnvironmentVariable(environmentVariables, 'SUPABASE_PUBLISHABLE_KEY')
 
+  const scientificProviderMode = assertScientificDiagnosisProviderConfiguration(environmentVariables)
   const provider = getConfiguredAIProviderName(environmentVariables)
-  requireEnvironmentVariable(
-    environmentVariables,
-    provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY',
-  )
+  if (scientificProviderMode !== 'fake') {
+    requireEnvironmentVariable(
+      environmentVariables,
+      provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY',
+    )
+  }
 
   getE2EEnvironmentIdentity(environmentVariables)
 

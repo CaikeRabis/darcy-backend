@@ -1,8 +1,7 @@
-import { getE2EEnvironmentIdentity } from './e2eEnvironment'
+import { assertE2EOperationalIdentity } from './e2eEnvironment'
 
-const HISTORY_E2E_REQUIRED_VARIABLES = [
+const HISTORY_E2E_COMMON_VARIABLES = [
   'DARCY_E2E_GUARD',
-  'DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF',
   'DARCY_ALPHA_SUPABASE_PROJECT_REF',
   'DATABASE_URL',
   'DIRECT_URL',
@@ -14,7 +13,18 @@ const HISTORY_E2E_REQUIRED_VARIABLES = [
   'DARCY_E2E_USER_B_PASSWORD',
 ] as const
 
-type HistoryE2ERequiredVariable = typeof HISTORY_E2E_REQUIRED_VARIABLES[number]
+const HISTORY_E2E_REMOTE_VARIABLES = ['DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF'] as const
+const HISTORY_E2E_LOCAL_VARIABLES = [
+  'DARCY_E2E_LOCAL_STACK_ID',
+  'DARCY_E2E_LOCAL_GATEWAY_PORT',
+  'DARCY_E2E_LOCAL_DATABASE_PORT',
+  'DARCY_E2E_LOCAL_DIRECT_PORT',
+] as const
+
+type HistoryE2ERequiredVariable =
+  | typeof HISTORY_E2E_COMMON_VARIABLES[number]
+  | typeof HISTORY_E2E_REMOTE_VARIABLES[number]
+  | typeof HISTORY_E2E_LOCAL_VARIABLES[number]
 
 export interface ResumoHistoryE2EEnvironment {
   environment: NodeJS.ProcessEnv
@@ -75,11 +85,21 @@ export function createIsolatedResumoHistoryE2EEnvironment(
     PATH: inheritedEnvironment.PATH,
   }
 
-  for (const name of HISTORY_E2E_REQUIRED_VARIABLES) {
+  const local = Boolean(profile.DARCY_E2E_LOCAL_STACK_ID?.trim())
+  if (local) environment.DARCY_ENV_FILE = '.env.e2e.local'
+  const requiredVariables: readonly HistoryE2ERequiredVariable[] = [
+    ...HISTORY_E2E_COMMON_VARIABLES,
+    ...(local ? HISTORY_E2E_LOCAL_VARIABLES : HISTORY_E2E_REMOTE_VARIABLES),
+  ]
+
+  for (const name of requiredVariables) {
     environment[name] = getRequiredValue(profile, name)
   }
+  if (inheritedEnvironment.DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED === 'enabled') {
+    environment.DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED = 'enabled'
+  }
 
-  const identity = getE2EEnvironmentIdentity(environment)
+  const identity = assertE2EOperationalIdentity(environment)
   if (!identity) {
     throw new Error('O teste E2E de histórico exige DARCY_E2E_GUARD=enabled.')
   }
@@ -108,7 +128,7 @@ export function assertResumoHistoryE2EBackendIdentity(
   healthPayload: unknown,
   environmentVariables: NodeJS.ProcessEnv = process.env,
 ): void {
-  const expectedIdentity = getE2EEnvironmentIdentity(environmentVariables)
+  const expectedIdentity = assertE2EOperationalIdentity(environmentVariables)
 
   if (!expectedIdentity || !isHealthResponse(healthPayload)) {
     throw new Error('Não foi possível confirmar a identidade E2E do backend antes do teste de histórico.')

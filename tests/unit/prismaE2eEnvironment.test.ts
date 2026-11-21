@@ -17,6 +17,21 @@ function createE2EProfile(): Record<string, string> {
   }
 }
 
+function createLocalProfile(): Record<string, string> {
+  return {
+    DARCY_E2E_GUARD: 'enabled',
+    DARCY_E2E_LOCAL_STACK_ID: 'darcy-e2e-c0361',
+    DARCY_E2E_LOCAL_GATEWAY_PORT: '55421',
+    DARCY_E2E_LOCAL_DATABASE_PORT: '55422',
+    DARCY_E2E_LOCAL_DIRECT_PORT: '55422',
+    DARCY_ALPHA_SUPABASE_PROJECT_REF: 'alphaproject1',
+    DATABASE_URL: 'postgresql://postgres:password@127.0.0.1:55422/postgres',
+    DIRECT_URL: 'postgresql://postgres:password@127.0.0.1:55422/postgres',
+    SUPABASE_URL: 'http://127.0.0.1:55421',
+    SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key',
+  }
+}
+
 describe('ambiente isolado do Prisma E2E', () => {
   it('usa exclusivamente o perfil E2E mesmo com conexões Alpha herdadas', () => {
     const environment = createIsolatedPrismaE2EEnvironment(createE2EProfile(), {
@@ -62,5 +77,19 @@ describe('ambiente isolado do Prisma E2E', () => {
 
   it('bloqueia comandos Prisma não permitidos no ambiente E2E', () => {
     expect(() => getPrismaE2ECommand(['db', 'push'], 'apply')).toThrow('não permitido')
+  })
+
+  it('reconhece a configuração local, mas bloqueia Prisma sem prova operacional', () => {
+    expect(() => createIsolatedPrismaE2EEnvironment(createLocalProfile())).toThrow('comprovação operacional')
+  })
+
+  it('aceita Prisma local somente quando o launcher repassa a prova operacional', () => {
+    const environment = createIsolatedPrismaE2EEnvironment(createLocalProfile(), {
+      PATH: '/usr/bin',
+      DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED: 'enabled',
+    })
+
+    expect(environment.DARCY_ENV_FILE).toBe('.env.e2e.local')
+    expect(environment.DARCY_E2E_LOCAL_STACK_ID).toBe('darcy-e2e-c0361')
   })
 })

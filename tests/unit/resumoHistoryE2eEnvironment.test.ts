@@ -21,6 +21,26 @@ function createProfile(): Record<string, string> {
   }
 }
 
+function createLocalProfile(): Record<string, string> {
+  return {
+    DARCY_E2E_GUARD: 'enabled',
+    DARCY_E2E_LOCAL_STACK_ID: 'darcy-e2e-c0361',
+    DARCY_E2E_LOCAL_GATEWAY_PORT: '55421',
+    DARCY_E2E_LOCAL_DATABASE_PORT: '55422',
+    DARCY_E2E_LOCAL_DIRECT_PORT: '55422',
+    DARCY_ALPHA_SUPABASE_PROJECT_REF: 'alphaproject1',
+    DATABASE_URL: 'postgresql://postgres:password@127.0.0.1:55422/postgres',
+    DIRECT_URL: 'postgresql://postgres:password@127.0.0.1:55422/postgres',
+    SUPABASE_URL: 'http://127.0.0.1:55421',
+    SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key',
+    DARCY_E2E_USER_A_EMAIL: 'user-a@example.test',
+    DARCY_E2E_USER_A_PASSWORD: 'password-a',
+    DARCY_E2E_USER_B_EMAIL: 'user-b@example.test',
+    DARCY_E2E_USER_B_PASSWORD: 'password-b',
+    PORT: '3001',
+  }
+}
+
 describe('ambiente E2E do histórico do Resumo Acadêmico', () => {
   it('descarta variáveis herdadas e preserva somente o perfil E2E necessário', () => {
     const result = createIsolatedResumoHistoryE2EEnvironment(createProfile(), {
@@ -71,5 +91,19 @@ describe('ambiente E2E do histórico do Resumo Acadêmico', () => {
       ok: true,
       data: { status: 'alive', e2eEnvironment: { supabaseProjectRef: 'otherproject1' } },
     }, environment)).toThrow('backend local não corresponde')
+  })
+
+  it('bloqueia o runner local sem prova operacional da stack', () => {
+    expect(() => createIsolatedResumoHistoryE2EEnvironment(createLocalProfile())).toThrow('comprovação operacional')
+  })
+
+  it('aceita o runner local somente com prova operacional herdada', () => {
+    const result = createIsolatedResumoHistoryE2EEnvironment(createLocalProfile(), {
+      PATH: '/usr/bin',
+      DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED: 'enabled',
+    })
+
+    expect(result.environment.DARCY_ENV_FILE).toBe('.env.e2e.local')
+    expect(result.apiBaseUrl).toBe('http://127.0.0.1:3001')
   })
 })
