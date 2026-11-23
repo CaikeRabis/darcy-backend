@@ -1,0 +1,65 @@
+name: darcy-e2e-c0361
+
+services:
+  db:
+    image: public.ecr.aws/supabase/postgres@sha256:6942962433a569e87f228b4d4ab7e11db5deca64e43babb3a038443ad6c4f1bb
+    environment:
+      POSTGRES_PASSWORD: ${DARCY_E2E_POSTGRES_PASSWORD:?configure a synthetic local password outside Git}
+    ports:
+      - '127.0.0.1:55422:5432'
+    volumes:
+      - darcy-e2e-c0361_db:/var/lib/postgresql/data
+      - ./db-init/00-auth-schema.sql:/docker-entrypoint-initdb.d/00-auth-schema.sql:ro
+    networks:
+      - darcy-e2e-c0361_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U supabase_admin -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  auth:
+    image: public.ecr.aws/supabase/gotrue@sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_admin:${DARCY_E2E_POSTGRES_PASSWORD}@db:5432/postgres?sslmode=disable
+      GOTRUE_DB_NAMESPACE: auth
+      GOTRUE_SITE_URL: http://127.0.0.1:5174
+      API_EXTERNAL_URL: http://127.0.0.1:55421
+      GOTRUE_JWT_SECRET: ${DARCY_E2E_JWT_SECRET:?configure a synthetic local JWT secret outside Git}
+      GOTRUE_DISABLE_SIGNUP: 'false'
+      GOTRUE_MAILER_AUTOCONFIRM: 'true'
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
+      GOTRUE_SMTP_ADMIN_EMAIL: darcy-e2e-c0361@example.invalid
+    networks:
+      - darcy-e2e-c0361_network
+
+  gateway:
+    image: public.ecr.aws/supabase/kong@sha256:1b53405d8680a09d6f44494b7990bf7da2ea43f84a258c59717d4539abf09f6d
+    depends_on:
+      auth:
+        condition: service_started
+    environment:
+      KONG_DATABASE: 'off'
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 'off'
+    ports:
+      - '127.0.0.1:55421:8000'
+    volumes:
+      - ./kong.yml:/home/kong/kong.yml:ro
+    networks:
+      - darcy-e2e-c0361_network
+
+networks:
+  darcy-e2e-c0361_network:
+    name: darcy-e2e-c0361_network
+
+volumes:
+  darcy-e2e-c0361_db:
+    name: darcy-e2e-c0361_db
