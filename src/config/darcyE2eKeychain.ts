@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
+import { resolve } from 'node:path'
 import {
   DARCY_E2E_R1_IDENTITY,
   type DarcyE2eR1SecretName,
@@ -12,6 +13,7 @@ import { DarcyE2eSecretStoreError } from './darcyE2eSecretStore'
 
 export const DARCY_E2E_R1_KEYCHAIN_ACCOUNT = 'darcy-e2e-c0361-r1'
 export const DARCY_E2E_R1_KEYCHAIN_SERVICE_PREFIX = 'com.escritacomciencia.darcy.e2e.darcy-e2e-c0361-r1'
+export const DARCY_E2E_KEYCHAIN_TIMEOUT_MS = 12_000
 
 export interface KeychainCommandResult {
   stdout: string
@@ -30,19 +32,34 @@ function keychainService(name: DarcyE2eR1SecretName): string {
   return `${DARCY_E2E_R1_KEYCHAIN_SERVICE_PREFIX}.${name}`
 }
 
+function helperPath(): string {
+  return resolve(__dirname, '../../scripts/darcy-e2e-keychain-reader.swift')
+}
+
 function defaultRunner(): KeychainCommandRunner {
   return {
     run(args) {
-      try {
-        const stdout = execFileSync('security', args, {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-        return { stdout: String(stdout), stderr: '' }
-      } catch {
-        // Nunca transportar stdout/stderr do Keychain para a exceção.
-        throw new DarcyE2eSecretStoreError('KEYCHAIN_UNAVAILABLE', '[KEYCHAIN_UNAVAILABLE] O segredo não pôde ser recuperado do armazenamento protegido.')
+      if (process.platform !== 'darwin') {
+        throw new DarcyE2eSecretStoreError('KEYCHAIN_UNAVAILABLE', '[KEYCHAIN_UNAVAILABLE] O leitor nativo do macOS só pode ser usado no macOS.')
       }
+
+      const result = spawnSync('/usr/bin/swift', [helperPath(), ...args], {
+        encoding: 'utf8',
+        timeout: DARCY_E2E_KEYCHAIN_TIMEOUT_MS,
+        killSignal: 'SIGTERM',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+
+      if (result.error || result.status !== 0 || result.signal) {
+        // Nunca transportar stdout/stderr do helper para a exceção.
+        const processError = result.error as NodeJS.ErrnoException | undefined
+        const code = processError?.code === 'ETIMEDOUT' || result.signal === 'SIGTERM'
+          ? 'KEYCHAIN_TIMEOUT'
+          : 'KEYCHAIN_UNAVAILABLE'
+        throw new DarcyE2eSecretStoreError(code, `[${code}] O segredo não pôde ser recuperado do armazenamento protegido.`)
+      }
+
+      return { stdout: String(result.stdout ?? ''), stderr: '' }
     },
   }
 }
@@ -65,14 +82,13 @@ export function createDarcyE2eR1KeychainReader(
       let result: KeychainCommandResult
       try {
         result = runner.run([
-          'find-generic-password',
-          '-a',
+          '--account',
           DARCY_E2E_R1_KEYCHAIN_ACCOUNT,
-          '-s',
+          '--service',
           keychainService(name),
-          '-w',
         ])
-      } catch {
+      } catch (error) {
+        if (error instanceof DarcyE2eSecretStoreError) throw error
         throw new DarcyE2eSecretStoreError('KEYCHAIN_UNAVAILABLE', '[KEYCHAIN_UNAVAILABLE] O segredo não pôde ser recuperado do armazenamento protegido.')
       }
       const value = result.stdout.trim()

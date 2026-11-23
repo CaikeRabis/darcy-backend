@@ -3,6 +3,7 @@ import {
   createDarcyE2eR1KeychainReader,
   DARCY_E2E_R1_KEYCHAIN_ACCOUNT,
   DARCY_E2E_R1_KEYCHAIN_SERVICE_PREFIX,
+  DARCY_E2E_KEYCHAIN_TIMEOUT_MS,
   resolveDarcyE2eR1KeychainSecrets,
   type KeychainCommandRunner,
 } from '../../src/config/darcyE2eKeychain'
@@ -15,7 +16,7 @@ function runnerFor(values: Record<string, string>): { runner: KeychainCommandRun
     runner: {
       run(args) {
         calls.push([...args])
-        const service = args[args.indexOf('-s') + 1]
+        const service = args[args.indexOf('--service') + 1]
         return { stdout: values[service] ?? '' }
       },
     },
@@ -32,8 +33,8 @@ describe('adaptador Keychain R1', () => {
     expect(result.stackId).toBe(DARCY_E2E_R1_IDENTITY.stackId)
     expect(calls).toHaveLength(2)
     expect(calls[0]).toEqual([
-      'find-generic-password', '-a', DARCY_E2E_R1_KEYCHAIN_ACCOUNT,
-      '-s', `${DARCY_E2E_R1_KEYCHAIN_SERVICE_PREFIX}.DARCY_E2E_POSTGRES_PASSWORD`, '-w',
+      '--account', DARCY_E2E_R1_KEYCHAIN_ACCOUNT,
+      '--service', `${DARCY_E2E_R1_KEYCHAIN_SERVICE_PREFIX}.DARCY_E2E_POSTGRES_PASSWORD`,
     ])
   })
 
@@ -91,7 +92,7 @@ describe('adaptador Keychain R1', () => {
     const reader = createDarcyE2eR1KeychainReader({ runner })
     try { reader.read('DARCY_E2E_JWT_SECRET', DARCY_E2E_R1_IDENTITY, 'resume') } catch { /* esperado */ }
     expect(calls[0]).not.toContain('memory-only-jwt')
-    expect(calls[0]).toContain('-w')
+    expect(calls[0]).toContain('--service')
   })
 
   it('K09 não possui fallback de ambiente remoto', () => {
@@ -105,5 +106,10 @@ describe('adaptador Keychain R1', () => {
     const reader = createDarcyE2eR1KeychainReader({ runner })
     expect(reader).not.toHaveProperty('write')
     expect(reader).not.toHaveProperty('delete')
+  })
+
+  it('T07 define um timeout interno finito para o helper nativo', () => {
+    expect(DARCY_E2E_KEYCHAIN_TIMEOUT_MS).toBeGreaterThan(0)
+    expect(DARCY_E2E_KEYCHAIN_TIMEOUT_MS).toBeLessThanOrEqual(15_000)
   })
 })
