@@ -1,0 +1,2 @@
+CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_admin;
+GRANT USAGE, CREATE ON SCHEMA auth TO supabase_admin;
