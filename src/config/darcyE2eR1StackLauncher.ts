@@ -1,7 +1,6 @@
 import {
   assertOperationalStackFor,
   assertStackPreflightFor,
-  createOperationalEnvironmentFor,
   DARCY_E2E_STACK_IMAGES,
   sanitizeStackEvidenceFor,
   type DedicatedStackPreflightInput,
@@ -60,13 +59,31 @@ export function assertDarcyE2eR1Preflight(input: DedicatedStackPreflightInput): 
 
 export function assertDarcyE2eR1OperationalStack(snapshot: OperationalStackSnapshot): void {
   assertOperationalStackFor(snapshot, DARCY_E2E_R1_STACK)
+
+  if (!snapshot.manifest.path.endsWith('infra/darcy-e2e-c0361-r1/docker-compose.yml')) {
+    throw new Error('A evidência operacional não corresponde ao manifesto Compose R1.')
+  }
+
+  const services = snapshot.containers.map((container) => container.service).sort()
+  if (snapshot.containers.length !== 3 || services.join(',') !== 'auth,db,gateway') {
+    throw new Error('A stack R1 deve conter exatamente db, auth e gateway.')
+  }
+
+  if (snapshot.containers.some((container) => container.running !== true)) {
+    throw new Error('Todos os containers R1 devem estar em execução.')
+  }
 }
 
 export function createDarcyE2eR1OperationalEnvironment(
   environment: NodeJS.ProcessEnv,
   snapshot: OperationalStackSnapshot,
 ): NodeJS.ProcessEnv {
-  return createOperationalEnvironmentFor(environment, snapshot, DARCY_E2E_R1_STACK)
+  // Compatibilidade para consumidores de teste: um snapshot simulado pode ser
+  // validado, mas nunca concede autorização operacional nem emite o marcador.
+  assertOperationalStackFor(snapshot, DARCY_E2E_R1_STACK)
+  const isolated = { ...environment }
+  delete isolated.DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED
+  return isolated
 }
 
 export function sanitizeDarcyE2eR1StackEvidence(snapshot: OperationalStackSnapshot): SanitizedStackEvidence {

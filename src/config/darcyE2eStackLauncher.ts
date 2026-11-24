@@ -92,6 +92,8 @@ export interface OperationalContainerSnapshot {
   mounts: readonly string[]
   ports: readonly PortBindingSnapshot[]
   health: 'healthy' | 'unhealthy' | 'starting' | 'none'
+  /** Preenchido por coletores operacionais; ausente em snapshots legados de teste. */
+  running?: boolean
 }
 
 export interface OperationalStackSnapshot {
@@ -274,6 +276,9 @@ export function createOperationalEnvironmentFor(
   definition: StackDefinition,
 ): NodeJS.ProcessEnv {
   assertOperationalStackFor(snapshot, definition)
+  if (definition.composeProject === 'darcy-e2e-c0361-r1') {
+    throw new Error('A autorização operacional R1 exige o coletor Docker oficial.')
+  }
   return { ...environment, DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED: 'enabled' }
 }
 
@@ -289,7 +294,15 @@ export interface SanitizedStackEvidence {
   composeProject: string
   network: string
   volumes: string[]
-  containers: Array<{ id: string; name: string; service: string; image: string; health: string; ports: PortBindingSnapshot[] }>
+  containers: Array<{
+    id: string
+    name: string
+    service: string
+    image: string
+    health: string
+    running?: boolean
+    ports: PortBindingSnapshot[]
+  }>
 }
 
 export function sanitizeStackEvidenceFor(
@@ -307,6 +320,7 @@ export function sanitizeStackEvidenceFor(
       service: container.service,
       image: container.image,
       health: container.health,
+      ...(container.running === undefined ? {} : { running: container.running }),
       ports: [...container.ports],
     })),
   }

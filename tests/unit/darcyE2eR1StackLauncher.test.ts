@@ -46,18 +46,18 @@ function operational(overrides: Partial<OperationalStackSnapshot> = {}): Operati
         id: 'r1-db', name: 'darcy-e2e-c0361-r1-db-1', service: 'db', image: DARCY_E2E_STACK_IMAGES.database,
         labels: { 'com.docker.compose.project': DARCY_E2E_R1_STACK.composeProject, 'com.docker.compose.service': 'db' },
         networks: [DARCY_E2E_R1_STACK.network], mounts: [DARCY_E2E_R1_STACK.databaseVolume],
-        ports: [{ hostIp: '127.0.0.1', hostPort: 55522, containerPort: 5432 }], health: 'healthy',
+        ports: [{ hostIp: '127.0.0.1', hostPort: 55522, containerPort: 5432 }], health: 'healthy', running: true,
       },
       {
         id: 'r1-auth', name: 'darcy-e2e-c0361-r1-auth-1', service: 'auth', image: DARCY_E2E_STACK_IMAGES.auth,
         labels: { 'com.docker.compose.project': DARCY_E2E_R1_STACK.composeProject, 'com.docker.compose.service': 'auth' },
-        networks: [DARCY_E2E_R1_STACK.network], mounts: [], ports: [], health: 'healthy',
+        networks: [DARCY_E2E_R1_STACK.network], mounts: [], ports: [], health: 'healthy', running: true,
       },
       {
         id: 'r1-gateway', name: 'darcy-e2e-c0361-r1-gateway-1', service: 'gateway', image: DARCY_E2E_STACK_IMAGES.gateway,
         labels: { 'com.docker.compose.project': DARCY_E2E_R1_STACK.composeProject, 'com.docker.compose.service': 'gateway' },
         networks: [DARCY_E2E_R1_STACK.network], mounts: [],
-        ports: [{ hostIp: '127.0.0.1', hostPort: 55521, containerPort: 8000 }], health: 'healthy',
+        ports: [{ hostIp: '127.0.0.1', hostPort: 55521, containerPort: 8000 }], health: 'healthy', running: true,
       },
     ],
     ...overrides,
@@ -146,9 +146,14 @@ describe('launcher da stack R1', () => {
     })).toThrow()
   })
 
-  it('O05 só fornece o marcador após comprovação operacional R1', () => {
+  it('O05 não fornece marcador para snapshot simulado', () => {
     expect(() => createDarcyE2eR1OperationalEnvironment({}, { ...operational(), containers: [] })).toThrow()
-    expect(createDarcyE2eR1OperationalEnvironment({}, operational()).DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED).toBe('enabled')
+    expect(createDarcyE2eR1OperationalEnvironment({}, operational()).DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED).toBeUndefined()
+  })
+
+  it('O06 snapshot estrutural simulado nunca fornece marcador operacional', () => {
+    const environment = createDarcyE2eR1OperationalEnvironment({ DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED: 'enabled' }, operational())
+    expect(environment.DARCY_E2E_LOCAL_OPERATIONAL_VERIFIED).toBeUndefined()
   })
 
   it('O09 sanitiza evidências com a identidade R1, sem reutilizar a stack original', () => {
