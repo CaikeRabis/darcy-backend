@@ -13,6 +13,11 @@ import {
   getOwnedResumoScientificContextSnapshot,
   type ResumoScientificContextSnapshot,
 } from './ResumoAcademicoService'
+import {
+  persistScientificDiagnosis,
+  ScientificDiagnosisRevisionConflictError,
+  type PersistedScientificDiagnosis,
+} from './ScientificDiagnosisPersistenceService'
 
 export type ScientificDiagnosisResult =
   | { status: 'not_found' }
@@ -20,6 +25,10 @@ export type ScientificDiagnosisResult =
   | { status: 'provider_error'; code: string; message: string }
   | { status: 'invalid_provider_response' }
   | { status: 'success'; diagnosis: ScientificDiagnosis }
+
+export interface ScientificDiagnosisPersistence {
+  persist(projectId: string, profileId: string, diagnosis: ScientificDiagnosis): Promise<PersistedScientificDiagnosis | undefined>
+}
 
 export interface ScientificDiagnosisGenerator {
   generate(request: AIGenerationRequest): Promise<ApiResponse<string>>
@@ -37,6 +46,10 @@ Categorias permitidas: informacao_insuficiente, alinhamento, tensao, contradicao
 
 const DEFAULT_GENERATOR: ScientificDiagnosisGenerator = {
   generate: (request) => AIService.getInstance().generateScientificDiagnosis(request),
+}
+
+const DEFAULT_PERSISTENCE: ScientificDiagnosisPersistence = {
+  persist: persistScientificDiagnosis,
 }
 
 export function createScientificDiagnosisGenerator(
@@ -152,7 +165,36 @@ function finalizeDiagnosis(
 }
 
 export class ScientificDiagnosisService {
-  constructor(private readonly generator: ScientificDiagnosisGenerator = createScientificDiagnosisGenerator()) {}
+  constructor(
+    private readonly generator: ScientificDiagnosisGenerator = createScientificDiagnosisGenerator(),
+    private readonly persistence?: ScientificDiagnosisPersistence,
+  ) {}
+
+  private async persistIfConfigured(
+    projectId: string,
+    profileId: string,
+    diagnosis: ScientificDiagnosis,
+  ): Promise<ScientificDiagnosisResult> {
+    if (!this.persistence) return { status: 'success', diagnosis }
+    try {
+      const persisted = await this.persistence.persist(projectId, profileId, diagnosis)
+      if (!persisted) return { status: 'not_found' }
+      return {
+        status: 'success',
+        diagnosis: {
+          ...persisted.diagnosis,
+          diagnosisId: persisted.id,
+          textVersionId: persisted.textVersionId,
+          createdAt: persisted.createdAt.toISOString(),
+        },
+      }
+    } catch (error) {
+      if (error instanceof ScientificDiagnosisRevisionConflictError) {
+        return { status: 'conflict', revision: error.revision }
+      }
+      throw error
+    }
+  }
 
   async diagnose(
     projectId: string,
@@ -170,7 +212,7 @@ export class ScientificDiagnosisService {
     const catalog = evidenceCatalog(snapshot)
     const usable = catalog.some((entry) => entry.value !== null && entry.value.trim() !== '' && entry.state !== 'invalido')
     if (!usable) {
-      return { status: 'success', diagnosis: deterministicInsufficient(snapshot) }
+      return this.persistIfConfigured(projectId, profileId, deterministicInsufficient(snapshot))
     }
 
     const request: AIGenerationRequest = {
@@ -206,6 +248,12 @@ export class ScientificDiagnosisService {
     if (current.status === 'conflict' || current.snapshot.revision !== snapshot.revision) {
       return { status: 'conflict', revision: current.status === 'conflict' ? current.revision : current.snapshot.revision }
     }
-    return { status: 'success', diagnosis }
+    return this.persistIfConfigured(projectId, profileId, diagnosis)
   }
+}
+
+export function createPersistedScientificDiagnosisService(
+  generator: ScientificDiagnosisGenerator = createScientificDiagnosisGenerator(),
+): ScientificDiagnosisService {
+  return new ScientificDiagnosisService(generator, DEFAULT_PERSISTENCE)
 }

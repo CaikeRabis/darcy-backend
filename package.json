@@ -16,6 +16,7 @@
     "test:e2e:resumo-milestones": "npm run build && node scripts/run-resumo-academico-milestones-e2e.cjs",
     "test:e2e:resumo-restoration": "npm run build && node scripts/run-resumo-restoration-e2e.cjs",
     "test:e2e:text-versions": "npm run build && node scripts/run-resumo-text-versions-e2e.cjs",
+    "test:e2e:scientific-diagnosis": "npm run build && node scripts/run-scientific-diagnosis-e2e.cjs",
     "experiment:cnpq:dry-run": "ts-node scripts/run-cnpq-evaluation.ts",
     "test:typecheck": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc --noEmit",

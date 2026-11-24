@@ -44,7 +44,7 @@ type PrismaE2EVariable =
 
 export type PrismaE2EProfile = Record<PrismaE2EVariable, string>
 
-export type PrismaE2ECommand = ['validate'] | ['migrate', 'status'] | ['migrate', 'deploy']
+export type PrismaE2ECommand = ['validate'] | ['migrate', 'status'] | ['migrate', 'deploy'] | ['migrate', 'resolve', '--rolled-back', string]
 
 export function createIsolatedPrismaE2EEnvironment(
   profile: Record<string, string | undefined>,
@@ -101,6 +101,16 @@ export function getPrismaE2ECommand(
     }
 
     return ['migrate', 'deploy']
+  }
+
+  if (argumentsList.length === 4 && argumentsList[0] === 'migrate' && argumentsList[1] === 'resolve' && argumentsList[2] === '--rolled-back') {
+    if (migrationApproval !== 'recover') {
+      throw new Error('A recuperação de migration E2E exige DARCY_E2E_MIGRATION_APPROVED=recover.')
+    }
+    if (!/^20[0-9]{12}_[a-z0-9_]+$/.test(argumentsList[3])) {
+      throw new Error('A migration de recuperação E2E é inválida.')
+    }
+    return ['migrate', 'resolve', '--rolled-back', argumentsList[3]]
   }
 
   throw new Error('Comando Prisma E2E não permitido.')

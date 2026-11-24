@@ -54,6 +54,9 @@ export const ScientificDiagnosisSchema = z.object({
   projectId: z.string().min(1).max(100),
   analyzedRevision: z.number().int().nonnegative(),
   findings: z.array(ScientificDiagnosisFindingSchema).max(8),
+  diagnosisId: z.string().min(1).max(120).optional(),
+  textVersionId: z.string().min(1).max(120).nullable().optional(),
+  createdAt: z.string().datetime({ offset: true }).optional(),
 }).strict()
 
 export type ScientificDiagnosis = z.infer<typeof ScientificDiagnosisSchema>

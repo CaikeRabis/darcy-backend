@@ -52,26 +52,28 @@ enum ResumoAcademicoTextOrigin {
 
 model Profile {
   /// UUID correspondente a auth.users.id, gerenciado pelo Supabase Auth.
-  id        String    @id @db.Uuid
-  projects  Project[]
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id                  String                               @id @db.Uuid
+  projects            Project[]
+  scientificDiagnoses ResumoAcademicoScientificDiagnosis[]
+  createdAt           DateTime                             @default(now()) @map("created_at")
+  updatedAt           DateTime                             @updatedAt @map("updated_at")
 
   @@map("profiles")
 }
 
 model Project {
-  id                      String                   @id @default(cuid())
-  profileId               String                   @map("profile_id") @db.Uuid
-  title                   String
-  field                   String
-  type                    ProjectType
-  profile                 Profile                  @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  resumoAcademicoProgress ResumoAcademicoProgress?
-  resumoAcademicoHistory ResumoAcademicoHistoryEvent[]
-  resumoAcademicoTextVersions ResumoAcademicoTextVersion[]
-  createdAt               DateTime                 @default(now()) @map("created_at")
-  updatedAt               DateTime                 @updatedAt @map("updated_at")
+  id                                 String                               @id @default(cuid())
+  profileId                          String                               @map("profile_id") @db.Uuid
+  title                              String
+  field                              String
+  type                               ProjectType
+  profile                            Profile                              @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  resumoAcademicoProgress            ResumoAcademicoProgress?
+  resumoAcademicoHistory             ResumoAcademicoHistoryEvent[]
+  resumoAcademicoTextVersions        ResumoAcademicoTextVersion[]
+  resumoAcademicoScientificDiagnoses ResumoAcademicoScientificDiagnosis[]
+  createdAt                          DateTime                             @default(now()) @map("created_at")
+  updatedAt                          DateTime                             @updatedAt @map("updated_at")
 
   @@index([profileId])
   @@map("projects")
@@ -94,17 +96,17 @@ model ResumoAcademicoProgress {
 /// versões futuras serão associados por contentVersionRef apenas quando uma
 /// versão relevante for criada explicitamente.
 model ResumoAcademicoHistoryEvent {
-  id                String                     @id @default(cuid())
-  projectId         String                     @map("project_id")
+  id                String                      @id @default(cuid())
+  projectId         String                      @map("project_id")
   sequence          Int
   type              ResumoAcademicoEventType
   actor             ResumoAcademicoEventActor
   section           ResumoAcademicoSection?
   summary           String
-  contentVersionRef String?                    @map("content_version_ref")
-  project           Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contentVersionRef String?                     @map("content_version_ref")
+  project           Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   textVersion       ResumoAcademicoTextVersion?
-  createdAt         DateTime                   @default(now()) @map("created_at")
+  createdAt         DateTime                    @default(now()) @map("created_at")
 
   @@unique([projectId, sequence])
   @@index([projectId, createdAt])
@@ -114,25 +116,47 @@ model ResumoAcademicoHistoryEvent {
 /// Snapshot imutável de um texto em marco semântico do Resumo Acadêmico.
 /// Não é criado por autosave ou por digitação comum.
 model ResumoAcademicoTextVersion {
-  id               String                    @id @default(cuid())
-  projectId        String                    @map("project_id")
-  scopeKey         String                    @map("scope_key")
-  section          ResumoAcademicoSection?
-  versionNumber    Int                       @map("version_number")
-  progressRevision Int                       @map("progress_revision")
-  origin           ResumoAcademicoTextOrigin
-  content          String                    @db.Text
-  contentHash      String                    @map("content_hash") @db.VarChar(64)
-  previousVersionId String?                  @map("previous_version_id")
-  sourceEventId    String?                   @unique @map("source_event_id")
-  project          Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  previousVersion  ResumoAcademicoTextVersion? @relation("ResumoTextVersionLineage", fields: [previousVersionId], references: [id], onDelete: SetNull)
-  nextVersions     ResumoAcademicoTextVersion[] @relation("ResumoTextVersionLineage")
-  sourceEvent      ResumoAcademicoHistoryEvent? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
-  createdAt        DateTime                  @default(now()) @map("created_at")
+  id                  String                               @id @default(cuid())
+  projectId           String                               @map("project_id")
+  scopeKey            String                               @map("scope_key")
+  section             ResumoAcademicoSection?
+  versionNumber       Int                                  @map("version_number")
+  progressRevision    Int                                  @map("progress_revision")
+  origin              ResumoAcademicoTextOrigin
+  content             String                               @db.Text
+  contentHash         String                               @map("content_hash") @db.VarChar(64)
+  previousVersionId   String?                              @map("previous_version_id")
+  sourceEventId       String?                              @unique @map("source_event_id")
+  project             Project                              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  previousVersion     ResumoAcademicoTextVersion?          @relation("ResumoTextVersionLineage", fields: [previousVersionId], references: [id], onDelete: SetNull)
+  nextVersions        ResumoAcademicoTextVersion[]         @relation("ResumoTextVersionLineage")
+  sourceEvent         ResumoAcademicoHistoryEvent?         @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  scientificDiagnoses ResumoAcademicoScientificDiagnosis[]
+  createdAt           DateTime                             @default(now()) @map("created_at")
 
   @@unique([projectId, scopeKey, versionNumber])
   @@index([projectId, scopeKey, createdAt])
   @@index([projectId, progressRevision])
   @@map("resumo_academico_text_versions")
+}
+
+/// Diagnóstico científico imutável associado à revisão analisada. O JSON é
+/// validado antes da persistência e nunca altera o progresso do pesquisador.
+model ResumoAcademicoScientificDiagnosis {
+  id               String                      @id @default(cuid())
+  projectId        String                      @map("project_id")
+  profileId        String                      @map("profile_id") @db.Uuid
+  scope            String                      @default("resumo")
+  analyzedRevision Int                         @map("analyzed_revision")
+  diagnosis        Json                        @db.JsonB
+  textVersionId    String?                     @map("text_version_id")
+  project          Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  profile          Profile                     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  textVersion      ResumoAcademicoTextVersion? @relation(fields: [textVersionId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                    @default(now()) @map("created_at")
+
+  @@unique([projectId, analyzedRevision, scope])
+  @@index([projectId, createdAt])
+  @@index([projectId, analyzedRevision])
+  @@map("resumo_academico_scientific_diagnoses")
 }

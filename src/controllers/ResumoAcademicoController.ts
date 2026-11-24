@@ -34,6 +34,7 @@ import {
 } from '../services/ResumoAcademicoTextVersionService'
 import { isScientificDiagnosisEnabled } from '../config/scientificDiagnosis'
 import { ScientificDiagnosisService } from '../services/ScientificDiagnosisService'
+import { getOwnedScientificDiagnosis, listOwnedScientificDiagnoses, persistScientificDiagnosis } from '../services/ScientificDiagnosisPersistenceService'
 import { ResumoAcademicoSection } from '@prisma/client'
 
 const ProjectParamsSchema = z.object({
@@ -63,6 +64,11 @@ const VersionsQuerySchema = z.object({
 const ScientificDiagnosisRequestSchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
   scope: z.literal('resumo'),
+}).strict()
+
+const ScientificDiagnosesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(25),
+  beforeCreatedAt: z.string().datetime({ offset: true }).optional(),
 }).strict()
 
 function getAuthenticatedProfileId(request: Request): string | null {
@@ -164,7 +170,7 @@ export class ResumoAcademicoController {
     }
 
     try {
-      const result = await new ScientificDiagnosisService().diagnose(
+      const result = await new ScientificDiagnosisService(undefined, { persist: persistScientificDiagnosis }).diagnose(
         paramsResult.data.projectId,
         profileId,
         bodyResult.data.expectedRevision,
@@ -207,6 +213,72 @@ export class ResumoAcademicoController {
         ok: false,
         error: { code: 'SCIENTIFIC_DIAGNOSIS_FAILED', message: 'Não foi possível gerar o diagnóstico científico.' },
       })
+    }
+  }
+
+  static async listScientificDiagnoses(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = ProjectParamsSchema.safeParse(request.params)
+    const queryResult = ScientificDiagnosesQuerySchema.safeParse(request.query)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+    if (!isScientificDiagnosisEnabled()) {
+      response.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: 'Endpoint não encontrado.' } })
+      return
+    }
+    if (!paramsResult.success || !queryResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const page = await listOwnedScientificDiagnoses(paramsResult.data.projectId, profileId, queryResult.data)
+      if (!page) {
+        sendProjectNotFound(response)
+        return
+      }
+      response.status(200).json({ ok: true, diagnoses: page })
+    } catch {
+      sendProgressOperationError(response)
+    }
+  }
+
+  static async getScientificDiagnosis(request: Request, response: Response): Promise<void> {
+    const profileId = getAuthenticatedProfileId(request)
+    const paramsResult = z.object({
+      projectId: z.string().min(1).max(100),
+      diagnosisId: z.string().min(1).max(120),
+    }).strict().safeParse(request.params)
+
+    if (!profileId) {
+      sendUnauthorized(response)
+      return
+    }
+    if (!isScientificDiagnosisEnabled()) {
+      response.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: 'Endpoint não encontrado.' } })
+      return
+    }
+    if (!paramsResult.success) {
+      sendValidationError(response)
+      return
+    }
+
+    try {
+      const diagnosis = await getOwnedScientificDiagnosis(
+        paramsResult.data.projectId,
+        profileId,
+        paramsResult.data.diagnosisId,
+      )
+      if (!diagnosis) {
+        sendVersionNotFound(response)
+        return
+      }
+      response.status(200).json({ ok: true, diagnosis })
+    } catch {
+      sendProgressOperationError(response)
     }
   }
 
