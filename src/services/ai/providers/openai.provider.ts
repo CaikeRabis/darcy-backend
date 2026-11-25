@@ -29,6 +29,7 @@ import {
 } from '../contracts'
 import { DARCY_RESPONSE_JSON_SCHEMA } from '../darcyResponseValidation'
 import type { AIProvider } from '../provider'
+import { getE2EEnvironmentIdentity } from '../../../config/e2eEnvironment'
 
 export class OpenAIProvider implements AIProvider {
   public readonly name = 'openai' as const
@@ -36,6 +37,9 @@ export class OpenAIProvider implements AIProvider {
   private readonly client: OpenAI
 
   constructor() {
+    if (getE2EEnvironmentIdentity()) {
+      throw new AIProviderError('PROVIDER_ERROR', this.name)
+    }
     const apiKey = process.env.OPENAI_API_KEY?.trim()
 
     if (!apiKey) {

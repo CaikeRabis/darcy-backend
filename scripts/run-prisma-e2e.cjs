@@ -43,7 +43,31 @@ function run(command, argumentsList, environment, workingDirectory, timeoutMs = 
     if (error && typeof error === 'object' && (error.killed === true || error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM')) {
       throw new Error('O processo Prisma E2E excedeu o timeout operacional; o estado da operação é indeterminado.')
     }
-    throw new Error('O processo Prisma E2E falhou; a saída foi omitida por segurança.')
+    const rawStderr = error && typeof error === 'object' ? error.stderr : undefined
+    const rawStdout = error && typeof error === 'object' ? error.stdout : undefined
+    const stderr = Buffer.isBuffer(rawStderr) ? rawStderr.toString('utf8') : typeof rawStderr === 'string' ? rawStderr : ''
+    const stdout = Buffer.isBuffer(rawStdout) ? rawStdout.toString('utf8') : typeof rawStdout === 'string' ? rawStdout : ''
+    const diagnostic = `${stderr}\n${stdout}`
+    const prismaCode = diagnostic.match(/\bP\d{4}\b/)?.[0]
+    const errno = error && typeof error === 'object' && 'errno' in error && typeof error.errno === 'string' ? error.errno : undefined
+    const migrationsPending = /not yet been applied|migration.*pending/i.test(diagnostic)
+    const migrationNames = [...diagnostic.matchAll(/\b20[0-9]{12}_[a-z0-9_]+\b/g)].map((match) => match[0])
+    const category = prismaCode === 'P1000' || /authentication failed|password authentication|invalid password/i.test(diagnostic) ? 'postgres-authentication'
+      : prismaCode === 'P1001' ? 'database-unreachable'
+        : prismaCode === 'P1011' || /certificate|tls|ssl/i.test(diagnostic) ? 'tls-or-ssl'
+          : prismaCode === 'P1013' ? 'database-url-invalid'
+            : prismaCode === 'P3009' || /failed migration/i.test(diagnostic) ? 'failed-migration'
+              : /divergent migration|migration history.*diverg|drift/i.test(diagnostic) ? 'migration-divergence'
+                : migrationsPending ? 'pending-migrations'
+                  : /tenant or user not found|pooler.*user|user.*pooler/i.test(diagnostic) ? 'supabase-pooler-authentication'
+                    : /ENOTFOUND|EAI_AGAIN/.test(diagnostic) || ['ENOTFOUND', 'EAI_AGAIN'].includes(errno ?? '') ? 'dns'
+                      : /ECONNREFUSED|ETIMEDOUT|ECONNRESET/.test(diagnostic) || ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET'].includes(errno ?? '') ? 'tcp-network'
+                        : 'prisma-or-database'
+    const stage = argumentsList.includes('status') ? 'migration-status'
+      : argumentsList[0] === '-e' ? 'environment-identity'
+        : 'prisma-command'
+    const exit = error && typeof error === 'object' && 'status' in error && typeof error.status === 'number' ? error.status : undefined
+    throw new Error(`Processo E2E falhou (stage=${stage}, prismaCode=${prismaCode ?? 'none'}, exit=${exit ?? 'none'}, category=${category}, migrations=${migrationNames.join(',') || 'none'}); saída foi omitida por segurança.`)
   }
 }
 

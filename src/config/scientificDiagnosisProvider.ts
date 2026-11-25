@@ -47,8 +47,8 @@ export function assertScientificDiagnosisProviderConfiguration(
 ): ScientificDiagnosisProviderMode {
   const mode = getScientificDiagnosisProviderMode(environmentVariables)
   const identity = getE2EEnvironmentIdentity(environmentVariables)
-  if (identity?.mode === 'local' && mode !== 'fake') {
-    throw new Error('Stack E2E local exige provider científico fake; não há fallback para IA real.')
+  if (identity && mode !== 'fake') {
+    throw new Error('Ambiente E2E exige provider científico fake; não há fallback para IA real.')
   }
   if (mode !== 'fake') return mode
 

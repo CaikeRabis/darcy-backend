@@ -13,7 +13,7 @@
  */
 
 
-export type AIProviderName = 'gemini' | 'openai'
+export type AIProviderName = 'gemini' | 'openai' | 'e2e-fake'
 
 export type AIMessageRole = 'user' | 'assistant'
 

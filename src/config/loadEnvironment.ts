@@ -55,6 +55,11 @@ export function loadRuntimeEnvironment(): void {
   if (environmentFile === E2E_ENVIRONMENT_FILE && process.env.DARCY_E2E_GUARD !== 'enabled') {
     throw new Error('O perfil E2E exige DARCY_E2E_GUARD=enabled.')
   }
+  if (environmentFile === E2E_ENVIRONMENT_FILE) {
+    // Defesa adicional: SDKs reais não recebem chaves mesmo se o perfil local as contiver.
+    delete process.env.OPENAI_API_KEY
+    delete process.env.GEMINI_API_KEY
+  }
 }
 
 /**

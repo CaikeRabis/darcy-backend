@@ -66,4 +66,19 @@ describe('providerFactory sem consumo de API', () => {
       'AI_PROVIDER deve ser "gemini" ou "openai".',
     )
   })
+
+  it('seleciona fake em E2E mesmo com OpenAI configurada e sem chave', async () => {
+    Object.assign(process.env, {
+      DARCY_ENV_FILE: '.env.e2e.local', DARCY_E2E_GUARD: 'enabled',
+      DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF: 'e2eproject1',
+      DARCY_ALPHA_SUPABASE_PROJECT_REF: 'alphaproject1',
+      SUPABASE_URL: 'https://e2eproject1.supabase.co',
+      DATABASE_URL: 'postgresql://postgres.e2eproject1@pooler.supabase.com/postgres',
+      DIRECT_URL: 'postgresql://postgres.e2eproject1@pooler.supabase.com/postgres',
+      AI_PROVIDER: 'openai',
+    })
+    delete process.env.OPENAI_API_KEY
+    const factory = await import('../../src/services/ai/providerFactory')
+    expect(factory.getAIProvider().name).toBe('e2e-fake')
+  })
 })

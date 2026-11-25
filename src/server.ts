@@ -28,6 +28,8 @@ import {
   getConfiguredAIProviderName,
 } from './services/ai/providerFactory'
 import { isScientificDiagnosisFakeEnabled } from './config/scientificDiagnosisProvider'
+import { installE2EOutboundGuard } from './config/e2eOutboundGuard'
+import { getE2EEnvironmentIdentity } from './config/e2eEnvironment'
 
 loadRuntimeEnvironment()
 
@@ -39,6 +41,7 @@ const PORT = Number(process.env.PORT) || 3001
 
 try {
   validateEnvironment()
+  installE2EOutboundGuard()
 } catch (error) {
   const message = error instanceof Error ? error.message : 'Configuração de ambiente inválida.'
   console.error(`\n❌ [DARCY] ${message}\n   → Confira o perfil de ambiente selecionado e as variáveis obrigatórias.\n`)
@@ -51,8 +54,9 @@ const server = fakeScientificDiagnosis
   : app.listen(PORT, onServerReady)
 
 function onServerReady() {
-  const provider = getConfiguredAIProviderName()
-  const model = getConfiguredAIModel()
+  const e2e = getE2EEnvironmentIdentity()
+  const provider = e2e ? 'e2e-fake' : getConfiguredAIProviderName()
+  const model = e2e ? 'deterministic-options-v1' : getConfiguredAIModel()
 
   console.log(`
 ╔═══════════════════════════════════════════╗

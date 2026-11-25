@@ -43,6 +43,27 @@ describe('limites dos processos do verificador E2E R1', () => {
     expect(() => prismaRunner.run('node', ['validate'], {}, '/tmp', undefined, () => { throw new Error('secret=synthetic') })).toThrow('saída foi omitida')
   })
 
+  it('classifica status pendente, divergência, falha e autenticação sem revelar a saída', () => {
+    const cases = [
+      ['The following migrations have not yet been applied:\n20261124190000_resumo_academico_scientific_diagnoses', 'pending-migrations'],
+      ['Migration history is divergent; secret=synthetic', 'migration-divergence'],
+      ['Error: P3009 failed migration; secret=synthetic', 'failed-migration'],
+      ['Error: P1000 authentication failed; password=synthetic', 'postgres-authentication'],
+    ] as const
+    for (const [stdout, category] of cases) {
+      expect(() => prismaRunner.run('node', ['migrate', 'status'], {}, '/tmp', undefined, () => {
+        throw Object.assign(new Error('child failed'), { status: 1, stdout, stderr: '' })
+      })).toThrow(`category=${category}`)
+      try {
+        prismaRunner.run('node', ['migrate', 'status'], {}, '/tmp', undefined, () => {
+          throw Object.assign(new Error('child failed'), { status: 1, stdout, stderr: '' })
+        })
+      } catch (error) {
+        expect(String(error)).not.toContain('synthetic')
+      }
+    }
+  })
+
   it('health parser impõe limite e rejeita resposta vazia ou HTML', () => {
     let options: Record<string, unknown> | undefined
     const valid = dockerVerifier.probeAuthHealth('http://127.0.0.1:55521/auth/v1/health', (_command: string, _args: readonly string[], received: Record<string, unknown>) => {

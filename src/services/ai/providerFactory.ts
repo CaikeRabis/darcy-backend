@@ -18,6 +18,8 @@ import type { AIProviderName } from './contracts'
 import type { AIProvider } from './provider'
 import { GeminiProvider } from './providers/gemini.provider'
 import { OpenAIProvider } from './providers/openai.provider'
+import { E2EFakeProvider } from './providers/e2eFake.provider'
+import { getE2EEnvironmentIdentity } from '../../config/e2eEnvironment'
 
 let providerInstance: AIProvider | undefined
 
@@ -40,6 +42,10 @@ export function getConfiguredAIModel(): string {
 }
 
 export function getAIProvider(): AIProvider {
+  // A identidade E2E validada tem precedência absoluta sobre AI_PROVIDER e sobre o cache.
+  if (getE2EEnvironmentIdentity()?.supabaseProjectRef) {
+    return new E2EFakeProvider()
+  }
   if (!providerInstance) {
     providerInstance = getConfiguredAIProviderName() === 'openai'
       ? new OpenAIProvider()

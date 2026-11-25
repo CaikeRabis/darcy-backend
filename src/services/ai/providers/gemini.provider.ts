@@ -26,6 +26,7 @@ import {
   type AIGenerationRequest,
 } from '../contracts'
 import type { AIProvider } from '../provider'
+import { getE2EEnvironmentIdentity } from '../../../config/e2eEnvironment'
 
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -40,6 +41,9 @@ export class GeminiProvider implements AIProvider {
   private readonly client: GoogleGenerativeAI
 
   constructor() {
+    if (getE2EEnvironmentIdentity()) {
+      throw new AIProviderError('PROVIDER_ERROR', this.name)
+    }
     const apiKey = process.env.GEMINI_API_KEY?.trim()
 
     if (!apiKey || apiKey === 'your_gemini_api_key_here') {

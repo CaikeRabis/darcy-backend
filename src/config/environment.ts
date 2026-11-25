@@ -61,7 +61,7 @@ export function validateEnvironment(
 
   const scientificProviderMode = assertScientificDiagnosisProviderConfiguration(environmentVariables)
   const provider = getConfiguredAIProviderName(environmentVariables)
-  if (scientificProviderMode !== 'fake') {
+  if (scientificProviderMode !== 'fake' && !getE2EEnvironmentIdentity(environmentVariables)) {
     requireEnvironmentVariable(
       environmentVariables,
       provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY',

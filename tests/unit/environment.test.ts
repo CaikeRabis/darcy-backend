@@ -36,6 +36,8 @@ function createLocalEnvironment(): NodeJS.ProcessEnv {
     SUPABASE_PUBLISHABLE_KEY: 'local-publishable-key',
     AI_PROVIDER: 'openai',
     OPENAI_API_KEY: 'test-openai-key',
+    DARCY_SCIENTIFIC_DIAGNOSIS_ENABLED: 'enabled',
+    DARCY_SCIENTIFIC_DIAGNOSIS_PROVIDER: 'fake',
   }
 }
 
@@ -75,11 +77,15 @@ describe('validação de ambiente', () => {
   it('aceita E2E somente quando Auth e banco derivam a referência esperada', () => {
     const environment = createValidEnvironment()
     environment.DARCY_E2E_GUARD = 'enabled'
+    environment.DARCY_ENV_FILE = '.env.e2e.local'
+    environment.DARCY_SCIENTIFIC_DIAGNOSIS_ENABLED = 'enabled'
+    environment.DARCY_SCIENTIFIC_DIAGNOSIS_PROVIDER = 'fake'
     environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'e2eproject1'
     environment.DARCY_ALPHA_SUPABASE_PROJECT_REF = 'alphaproject1'
     environment.SUPABASE_URL = 'https://e2eproject1.supabase.co'
     environment.DATABASE_URL = 'postgresql://postgres:password@db.e2eproject1.supabase.co:5432/postgres'
     environment.DIRECT_URL = 'postgresql://postgres:password@db.e2eproject1.supabase.co:5432/postgres'
+    delete environment.OPENAI_API_KEY
 
     expect(() => validateEnvironment(environment)).not.toThrow()
     expect(getE2EEnvironmentIdentity(environment)).toEqual({ supabaseProjectRef: 'e2eproject1' })
@@ -88,6 +94,9 @@ describe('validação de ambiente', () => {
   it('aceita Session pooler do Supabase para runtime e operações Prisma E2E', () => {
     const environment = createValidEnvironment()
     environment.DARCY_E2E_GUARD = 'enabled'
+    environment.DARCY_ENV_FILE = '.env.e2e.local'
+    environment.DARCY_SCIENTIFIC_DIAGNOSIS_ENABLED = 'enabled'
+    environment.DARCY_SCIENTIFIC_DIAGNOSIS_PROVIDER = 'fake'
     environment.DARCY_E2E_EXPECTED_SUPABASE_PROJECT_REF = 'e2eproject1'
     environment.DARCY_ALPHA_SUPABASE_PROJECT_REF = 'alphaproject1'
     environment.SUPABASE_URL = 'https://e2eproject1.supabase.co'
