@@ -67,7 +67,9 @@ describe('política E2E de IA', () => {
       expect(transport).not.toHaveBeenCalled()
       socket.connect({ host: 'e2eproject1.supabase.co', port: 443 })
       socket.connect({ host: '127.0.0.1', port: 3001 })
-      expect(transport).toHaveBeenCalledTimes(2)
+      expect(() => Reflect.apply(socket.connect, socket, [[{ host: 'api.openai.com', port: 443 }, null]])).toThrow('bloqueada')
+      Reflect.apply(socket.connect, socket, [[{ host: '127.0.0.1', port: 55521 }, null]])
+      expect(transport).toHaveBeenCalledTimes(3)
     } finally {
       Socket.prototype.connect = before
     }

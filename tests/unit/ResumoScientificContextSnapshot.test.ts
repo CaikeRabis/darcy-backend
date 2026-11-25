@@ -233,9 +233,27 @@ describe('getOwnedResumoScientificContextSnapshot', () => {
     expect(textVersionFindFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         scopeKey: 'secao.contexto',
+        progressRevision: 8,
         sourceEventId: { not: null },
       }),
     }))
+  })
+
+  it('não promove resposta de autosave posterior à versão formal anterior', async () => {
+    const persisted = progress()
+    persisted.contexto.status = 'aprovado'
+    persisted.contexto.texto_sugerido = 'Texto aprovado explicitamente.'
+    persisted.contexto.respostas_usuario.problema_central = 'Problema alterado depois da aprovação.'
+    findFirst.mockResolvedValue({ id: 'project-do-perfil' })
+    findUnique.mockResolvedValue({ progress: persisted, revision: 9 })
+    textVersionFindFirst.mockImplementation(({ where }: { where: { progressRevision: number } }) =>
+      where.progressRevision === 8 ? { id: 'version-approval' } : null)
+
+    const result = await getOwnedResumoScientificContextSnapshot('project-do-perfil', 'perfil-atual', 9)
+    expect(result?.status).toBe('found')
+    if (result?.status === 'found') {
+      expect(result.snapshot.researchProblem.state).toBe('rascunho_persistido')
+    }
   })
 
   it('recusa uma revisão divergente antes de expor o snapshot', async () => {

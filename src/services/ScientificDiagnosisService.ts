@@ -1,4 +1,5 @@
 import type { ApiResponse } from '../types/darcy.types'
+import { createHash } from 'node:crypto'
 import type { AIGenerationRequest } from './ai/contracts'
 import { AIService } from './ai/AIService'
 import { assertScientificDiagnosisProviderConfiguration } from '../config/scientificDiagnosisProvider'
@@ -61,10 +62,21 @@ export function createScientificDiagnosisGenerator(
 }
 
 interface EvidenceEntry {
-  id: string
+  id: 'problema' | 'objetivo_geral' | 'metodologia'
   state: 'confirmado' | 'rascunho_persistido' | 'ausente' | 'invalido'
   origin: string
   value: string | null
+}
+
+function analyzedContext(snapshot: ResumoScientificContextSnapshot, catalog: EvidenceEntry[]) {
+  return {
+    analyzedEvidence: catalog,
+    analyzedContentHash: createHash('sha256').update(JSON.stringify({
+      projectId: snapshot.projectId,
+      revision: snapshot.revision,
+      evidence: catalog,
+    })).digest('hex'),
+  }
 }
 
 function evidenceCatalog(snapshot: ResumoScientificContextSnapshot): EvidenceEntry[] {
@@ -115,6 +127,7 @@ function deterministicInsufficient(snapshot: ResumoScientificContextSnapshot): S
   return ScientificDiagnosisSchema.parse({
     projectId: snapshot.projectId,
     analyzedRevision: snapshot.revision,
+    ...analyzedContext(snapshot, catalog),
     findings: [{
       category: 'informacao_insuficiente',
       elements: (missing.length > 0 ? missing : catalog).map((entry) => entry.id).filter((id): id is 'problema' | 'objetivo_geral' | 'metodologia' => id === 'problema' || id === 'objetivo_geral' || id === 'metodologia').slice(0, 3),
@@ -135,7 +148,7 @@ function finalizeDiagnosis(
   const catalog = new Map(evidenceCatalog(snapshot).map((entry) => [entry.id, entry]))
   const findings = parsed.data.findings.map((finding) => {
     if (finding.elements.some((element) => !finding.evidenceIds.includes(element))) return undefined
-    const evidence = finding.evidenceIds.map((id) => catalog.get(id))
+    const evidence = finding.evidenceIds.map((id) => catalog.get(id as EvidenceEntry['id']))
     if (evidence.some((entry) => !entry)) return undefined
     if (finding.category === 'contradicao' && evidence.some((entry) => entry!.state !== 'confirmado')) return undefined
     return {
@@ -159,6 +172,7 @@ function finalizeDiagnosis(
   const result = ScientificDiagnosisSchema.safeParse({
     projectId: snapshot.projectId,
     analyzedRevision: snapshot.revision,
+    ...analyzedContext(snapshot, evidenceCatalog(snapshot)),
     findings,
   })
   return result.success ? result.data : undefined
@@ -245,7 +259,8 @@ export class ScientificDiagnosisService {
 
     const current = await getOwnedResumoScientificContextSnapshot(projectId, profileId)
     if (!current) return { status: 'not_found' }
-    if (current.status === 'conflict' || current.snapshot.revision !== snapshot.revision) {
+    if (current.status === 'conflict' || current.snapshot.revision !== snapshot.revision ||
+      analyzedContext(current.snapshot, evidenceCatalog(current.snapshot)).analyzedContentHash !== diagnosis.analyzedContentHash) {
       return { status: 'conflict', revision: current.status === 'conflict' ? current.revision : current.snapshot.revision }
     }
     return this.persistIfConfigured(projectId, profileId, diagnosis)

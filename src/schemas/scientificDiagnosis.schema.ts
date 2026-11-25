@@ -54,6 +54,16 @@ export const ScientificDiagnosisSchema = z.object({
   projectId: z.string().min(1).max(100),
   analyzedRevision: z.number().int().nonnegative(),
   findings: z.array(ScientificDiagnosisFindingSchema).max(8),
+  // Dados produzidos pelo servidor. Opcionais apenas para diagnósticos anteriores à F03.
+  analyzedEvidence: z.array(z.object({
+    id: ScientificElementSchema,
+    state: ScientificEvidenceStateSchema,
+    origin: z.string().min(1).max(80),
+    value: z.string().max(150_000).nullable(),
+  }).strict()).length(3).optional(),
+  analyzedContentHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  reviewState: z.enum(['formal_milestone', 'working_draft']).optional(),
+  associatedVersionScope: z.string().min(1).max(100).nullable().optional(),
   diagnosisId: z.string().min(1).max(120).optional(),
   textVersionId: z.string().min(1).max(120).nullable().optional(),
   createdAt: z.string().datetime({ offset: true }).optional(),

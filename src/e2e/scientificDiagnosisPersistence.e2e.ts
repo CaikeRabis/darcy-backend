@@ -86,7 +86,7 @@ export async function runScientificDiagnosisPersistenceE2E() {
 
     const diagnosisPath = `/api/v1/modulos/resumo-academico/${encodeURIComponent(projectId)}/scientific-diagnosis`
     const first = await request(diagnosisPath, userA.token, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: 2, scope: 'resumo' }) })
-    assert(first.status === 200 && record(first.body) && record(first.body.data) && typeof first.body.data.diagnosisId === 'string' && first.body.data.analyzedRevision === 2 && typeof first.body.data.textVersionId === 'string', 'Diagnóstico não foi persistido com vínculo à versão analisada.')
+    assert(first.status === 200 && record(first.body) && record(first.body.data) && typeof first.body.data.diagnosisId === 'string' && first.body.data.analyzedRevision === 2 && typeof first.body.data.textVersionId === 'string' && first.body.data.reviewState === 'formal_milestone' && first.body.data.associatedVersionScope === 'secao.contexto' && typeof first.body.data.analyzedContentHash === 'string', 'Diagnóstico da revisão aprovada não preservou o marco e as evidências.')
     const diagnosisId = first.body.data.diagnosisId as string
     const repeated = await request(diagnosisPath, userA.token, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: 2, scope: 'resumo' }) })
     assert(repeated.status === 200 && record(repeated.body) && record(repeated.body.data) && repeated.body.data.diagnosisId === diagnosisId, 'Repetição criou diagnóstico duplicado.')
@@ -99,16 +99,56 @@ export async function runScientificDiagnosisPersistenceE2E() {
     const foreign = await request(listPath, userB.token)
     assert(foreign.status === 404, 'Ownership de diagnóstico não foi bloqueado.')
 
-    const changed = structuredClone(approved); changed.tema = `${marker}_updated`
+    const same = await request(progressPath, userA.token, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: approved, expectedRevision: 2 }) })
+    assert(same.status === 200 && record(same.body) && same.body.revision === 2, 'Autosave idêntico incrementou a revisão aprovada.')
+
+    const changed = structuredClone(approved)
+    changed.contexto.status = 'em_revisao'
+    changed.contexto.respostas_usuario.problema_central = `${marker}_problema_alterado`
     const next = await request(progressPath, userA.token, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: changed, expectedRevision: 2 }) })
     assert(next.status === 200 && record(next.body) && next.body.revision === 3, 'Atualização de revisão falhou.')
     const stale = await request(diagnosisPath, userA.token, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: 2, scope: 'resumo' }) })
     assert(stale.status === 409, 'Diagnóstico com revisão obsoleta não retornou 409.')
 
+    const draftDiagnosis = await request(diagnosisPath, userA.token, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: 3, scope: 'resumo' }) })
+    const draftData = record(draftDiagnosis.body) && record(draftDiagnosis.body.data) ? draftDiagnosis.body.data : undefined
+    assert(draftDiagnosis.status === 200 && draftData?.analyzedRevision === 3 && draftData.reviewState === 'working_draft' && draftData.textVersionId === null &&
+      Array.isArray(draftData.analyzedEvidence) && draftData.analyzedEvidence.some((entry) => record(entry) && entry.id === 'problema' && entry.value === changed.contexto.respostas_usuario.problema_central),
+    'Diagnóstico da revisão em elaboração perdeu o conteúdo ou herdou versão anterior.')
+
+    const approvedAgain = structuredClone(changed)
+    approvedAgain.contexto.status = 'aprovado'
+    const approvalAgain = await request(`${progressPath}/sections/contexto/approve`, userA.token, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress: approvedAgain, expectedRevision: 3 }) })
+    assert(approvalAgain.status === 200 && record(approvalAgain.body) && approvalAgain.body.revision === 4, 'Nova aprovação não confirmou a revisão 4.')
+    const reapprovedDiagnosis = await request(diagnosisPath, userA.token, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: 4, scope: 'resumo' }) })
+    assert(reapprovedDiagnosis.status === 200 && record(reapprovedDiagnosis.body) && record(reapprovedDiagnosis.body.data) && reapprovedDiagnosis.body.data.reviewState === 'formal_milestone' && typeof reapprovedDiagnosis.body.data.textVersionId === 'string', 'Nova aprovação não gerou vínculo formal da revisão atual.')
+
+    const oldDiagnosis = await request(`${listPath.slice(0, listPath.indexOf('?'))}/${encodeURIComponent(diagnosisId)}`, userA.token)
+    assert(oldDiagnosis.status === 200 && record(oldDiagnosis.body) && record(oldDiagnosis.body.diagnosis) && record(oldDiagnosis.body.diagnosis.diagnosis) &&
+      oldDiagnosis.body.diagnosis.diagnosis.reviewState === 'formal_milestone' && oldDiagnosis.body.diagnosis.analyzedRevision === 2,
+    'A aprovação posterior alterou o diagnóstico histórico anterior.')
+
+    const restore = await request(`${progressPath}/versions/${encodeURIComponent(first.body.data.textVersionId as string)}/restore`, userA.token, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: 4, operationId: `f03-${randomUUID()}` }),
+    })
+    assert(restore.status === 200 && record(restore.body) && restore.body.revision === 5, 'Restauração não confirmou a revisão 5.')
+    const restoredDiagnosis = await request(diagnosisPath, userA.token, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: 5, scope: 'resumo' }) })
+    assert(restoredDiagnosis.status === 200 && record(restoredDiagnosis.body) && record(restoredDiagnosis.body.data) && restoredDiagnosis.body.data.reviewState === 'working_draft' && restoredDiagnosis.body.data.textVersionId === null, 'Restauração foi tratada indevidamente como aprovação.')
+
+    const restoredGet = await request(progressPath, userA.token)
+    assert(restoredGet.status === 200 && record(restoredGet.body) && record(restoredGet.body.progress) && restoredGet.body.revision === 5, 'Progresso restaurado não foi recuperado.')
+    const winnerA = structuredClone(restoredGet.body.progress); winnerA.tema = `${marker}_A`
+    const winnerB = structuredClone(restoredGet.body.progress); winnerB.tema = `${marker}_B`
+    const parallel = await Promise.all([winnerA, winnerB].map((progress) => request(progressPath, userA.token, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ progress, expectedRevision: 5 }) })))
+    assert(parallel.filter((item) => item.status === 200).length === 1 && parallel.filter((item) => item.status === 409).length === 1, 'PUTs concorrentes não produziram exatamente um sucesso e um conflito.')
+    const persistedWinner = await request(progressPath, userA.token)
+    assert(persistedWinner.status === 200 && record(persistedWinner.body) && record(persistedWinner.body.progress) && persistedWinner.body.revision === 6 &&
+      persistedWinner.body.progress.tema === (parallel[0].status === 200 ? winnerA.tema : winnerB.tema), 'O estado vencedor foi sobrescrito após o conflito.')
+
     const deletion = await request(`/api/projects/${encodeURIComponent(projectId)}`, userA.token, { method: 'DELETE' })
     const verification = await request(`/api/projects/${encodeURIComponent(projectId)}`, userA.token)
     assert(deletion.status === 204 && verification.status === 404, 'Cleanup sintético falhou.')
-    return { projectId, firstStatus: first.status, repeatedStatus: repeated.status, listStatus: listed.status, ownershipStatus: foreign.status, staleStatus: stale.status, cleanup: { deletionStatus: deletion.status, verificationStatus: verification.status } }
+    return { projectId, firstStatus: first.status, repeatedStatus: repeated.status, draftStatus: draftDiagnosis.status, reapprovedStatus: reapprovedDiagnosis.status, restoreStatus: restore.status, concurrencyStatuses: parallel.map((item) => item.status), listStatus: listed.status, ownershipStatus: foreign.status, staleStatus: stale.status, cleanup: { deletionStatus: deletion.status, verificationStatus: verification.status } }
   } catch (error) {
     try { await request(`/api/projects/${encodeURIComponent(projectId)}`, userA.token, { method: 'DELETE' }) } catch { /* evidência principal preservada */ }
     throw error

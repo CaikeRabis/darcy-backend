@@ -14,7 +14,9 @@ export function installE2EOutboundGuard(environmentVariables: NodeJS.ProcessEnv 
   const originalConnect = Socket.prototype.connect
 
   Socket.prototype.connect = function (this: Socket, ...args: unknown[]) {
-    const target = args[0]
+    // Undici/Node também encaminha a assinatura normalizada [options, callback].
+    // Validar o objeto interno preserva a lista fechada de destinos permitidos.
+    const target = Array.isArray(args[0]) ? args[0][0] : args[0]
     const host = typeof target === 'object' && target !== null
       ? ('host' in target ? String(target.host ?? 'localhost') : '')
       : typeof target === 'number'

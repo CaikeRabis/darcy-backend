@@ -589,6 +589,7 @@ function emptyScientificContextSnapshot(
 
 async function findVerifiedSectionConfirmations(
   projectId: string,
+  revision: number,
   progress: ResumoAcademicoState,
 ): Promise<ReadonlySet<ResumoAcademicoSection>> {
   const candidates = RESUMO_SECTIONS.filter((section) => (
@@ -599,6 +600,7 @@ async function findVerifiedSectionConfirmations(
     const version = await prisma.resumoAcademicoTextVersion.findFirst({
       where: {
         projectId,
+        progressRevision: revision,
         scopeKey: `secao.${section}`,
         section,
         origin: ResumoAcademicoTextOrigin.pesquisador,
@@ -635,7 +637,7 @@ async function createResumoScientificContextSnapshot(
   }
 
   const progress = parsed.data
-  const verifiedSectionConfirmations = await findVerifiedSectionConfirmations(projectId, progress)
+  const verifiedSectionConfirmations = await findVerifiedSectionConfirmations(projectId, revision, progress)
   const decision = progress.decisoes_autorais?.find((item) => item.id === 'contexto_problema_central')
   const decisionProblem = decision?.escolha.trim()
   const researchProblem = decisionProblem

@@ -70,6 +70,11 @@ describe('ScientificDiagnosisService', () => {
     expect(result.status).toBe('success')
     if (result.status === 'success') {
       expect(result.diagnosis.analyzedRevision).toBe(3)
+      expect(result.diagnosis.analyzedContentHash).toMatch(/^[a-f0-9]{64}$/)
+      expect(result.diagnosis.analyzedEvidence).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'problema', value: 'Problema claro' }),
+        expect.objectContaining({ id: 'metodologia', value: 'abordagem: Entrevistas' }),
+      ]))
       expect(result.diagnosis.findings[0]?.evidence).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: 'problema', excerpt: 'Problema claro' }),
       ]))
@@ -81,6 +86,15 @@ describe('ScientificDiagnosisService', () => {
         schema: SCIENTIFIC_DIAGNOSIS_JSON_SCHEMA,
       }),
     }))
+  })
+
+  it('rejeita conteúdo alterado mesmo se uma escrita externa não avançar a revisão', async () => {
+    getSnapshot.mockResolvedValueOnce({ status: 'found', snapshot: snapshot() })
+      .mockResolvedValueOnce({ status: 'found', snapshot: snapshot({
+        researchProblem: { state: 'confirmado', origin: 'resposta_usuario_persistida', value: 'Outro problema' },
+      }) })
+    await expect(new ScientificDiagnosisService(generator(validProviderResponse)).diagnose('p', 'u', 3, 'resumo'))
+      .resolves.toEqual({ status: 'conflict', revision: 3 })
   })
 
   it('rejeita referência de evidência que não existe', async () => {

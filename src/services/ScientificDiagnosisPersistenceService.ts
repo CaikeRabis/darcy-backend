@@ -1,7 +1,8 @@
-import { Prisma, ProjectType } from '@prisma/client'
+import { Prisma, ProjectType, ResumoAcademicoEventType, ResumoAcademicoTextOrigin } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { ScientificDiagnosisSchema, type ScientificDiagnosis } from '../schemas/scientificDiagnosis.schema'
+import { ResumoAcademicoStateSchema } from '../schemas/resumoAcademico.schema'
 
 const DiagnosisScopeSchema = z.literal('resumo')
 const MAX_LIST_LIMIT = 50
@@ -51,14 +52,16 @@ function isRetryable(error: unknown): boolean {
 }
 
 function toRecord(row: SelectedDiagnosis): PersistedScientificDiagnosis {
+  const diagnosis = ScientificDiagnosisSchema.parse(row.diagnosis)
   return {
     id: row.id,
     projectId: row.projectId,
     profileId: row.profileId,
     scope: DiagnosisScopeSchema.parse(row.scope),
     analyzedRevision: row.analyzedRevision,
-    textVersionId: row.textVersionId,
-    diagnosis: ScientificDiagnosisSchema.parse(row.diagnosis),
+    // Vínculos antigos, criados apenas pela coincidência de revisão, não são prova de aprovação.
+    textVersionId: diagnosis.reviewState === 'formal_milestone' ? row.textVersionId : null,
+    diagnosis,
     createdAt: row.createdAt,
   }
 }
@@ -81,7 +84,7 @@ async function saveInTransaction(
 
   const progress = await database.resumoAcademicoProgress.findUnique({
     where: { projectId: project.id },
-    select: { revision: true },
+    select: { revision: true, progress: true },
   })
   const currentRevision = progress?.revision ?? 0
   if (currentRevision !== diagnosis.analyzedRevision) throw new ScientificDiagnosisRevisionConflictError(currentRevision)
@@ -90,12 +93,50 @@ async function saveInTransaction(
     where: { projectId_analyzedRevision_scope: { projectId: project.id, analyzedRevision: diagnosis.analyzedRevision, scope: 'resumo' } },
     select: diagnosisSelect,
   })
-  if (existing) return toRecord(existing)
+  if (existing) {
+    const recorded = toRecord(existing)
+    if (diagnosis.analyzedContentHash && recorded.diagnosis.analyzedContentHash &&
+      diagnosis.analyzedContentHash !== recorded.diagnosis.analyzedContentHash) {
+      throw new ScientificDiagnosisRevisionConflictError(currentRevision)
+    }
+    return recorded
+  }
 
-  const textVersion = await database.resumoAcademicoTextVersion.findFirst({
-    where: { projectId: project.id, progressRevision: diagnosis.analyzedRevision },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true },
+  const parsedProgress = ResumoAcademicoStateSchema.safeParse(progress?.progress)
+  const candidates = parsedProgress.success ? await database.resumoAcademicoTextVersion.findMany({
+    where: {
+      projectId: project.id,
+      progressRevision: diagnosis.analyzedRevision,
+      origin: ResumoAcademicoTextOrigin.pesquisador,
+      sourceEventId: { not: null },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true, scopeKey: true, section: true, content: true, sourceEventId: true,
+      sourceEvent: { select: { projectId: true, type: true, section: true, contentVersionRef: true } },
+    },
+  }) : []
+  const textVersion = candidates.find((version) => {
+    const event = version.sourceEvent
+    if (!event || !version.sourceEventId || event.projectId !== project.id || event.contentVersionRef !== version.id) return false
+    if (version.scopeKey === 'resumo_completo') {
+      return version.section === null && event.type === ResumoAcademicoEventType.resumo_consolidado &&
+        event.section === null && Boolean(parsedProgress.data?.resumo_completo.trim()) &&
+        version.content === parsedProgress.data?.resumo_completo
+    }
+    const section = version.section
+    return section !== null && (section === 'contexto' || section === 'objetivo' || section === 'metodologia') &&
+      version.scopeKey === `secao.${section}` &&
+      event.type === ResumoAcademicoEventType.secao_aprovada && event.section === section &&
+      parsedProgress.data?.[section].status === 'aprovado' &&
+      Boolean(parsedProgress.data?.[section].texto_sugerido.trim()) &&
+      version.content === parsedProgress.data?.[section].texto_sugerido
+  })
+
+  const recordedDiagnosis = ScientificDiagnosisSchema.parse({
+    ...diagnosis,
+    reviewState: textVersion ? 'formal_milestone' : 'working_draft',
+    associatedVersionScope: textVersion?.scopeKey ?? null,
   })
 
   const created = await database.resumoAcademicoScientificDiagnosis.create({
@@ -104,7 +145,7 @@ async function saveInTransaction(
       profileId,
       scope: 'resumo',
       analyzedRevision: diagnosis.analyzedRevision,
-      diagnosis: diagnosis as unknown as Prisma.InputJsonValue,
+      diagnosis: recordedDiagnosis as unknown as Prisma.InputJsonValue,
       textVersionId: textVersion?.id ?? null,
     },
     select: diagnosisSelect,
