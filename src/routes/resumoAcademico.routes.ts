@@ -16,11 +16,12 @@
 import { Router } from 'express'
 import { ResumoAcademicoController } from '../controllers/ResumoAcademicoController'
 import { requireAuth } from '../middlewares/requireAuth'
+import { createAiUsageLimit } from '../middlewares/aiUsageLimit'
 import { requireProfile } from '../middlewares/requireProfile'
 
 const router = Router()
 
-router.post('/:projectId/scientific-diagnosis', requireAuth, requireProfile, ResumoAcademicoController.scientificDiagnosis)
+router.post('/:projectId/scientific-diagnosis', requireAuth, requireProfile, createAiUsageLimit('diagnosis'), ResumoAcademicoController.scientificDiagnosis)
 router.get('/:projectId/scientific-diagnoses', requireAuth, requireProfile, ResumoAcademicoController.listScientificDiagnoses)
 router.get('/:projectId/scientific-diagnoses/:diagnosisId', requireAuth, requireProfile, ResumoAcademicoController.getScientificDiagnosis)
 router.get('/:projectId/history', requireAuth, requireProfile, ResumoAcademicoController.getHistory)

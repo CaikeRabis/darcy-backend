@@ -1,0 +1,9 @@
+# Controle de uso de IA (QA01)
+
+O limitador atua apenas nos POSTs autenticados de chat, quick action e diagnóstico científico. Não limita autosave, histórico ou consultas. A política fica inativa por padrão; habilitar explicitamente com `DARCY_AI_LIMITS_ENABLED=enabled` apenas no ambiente homologado. `disabled` também é aceito. Valor inválido causa HTTP 503.
+
+Valores iniciais por processo: chat 10/minuto/usuário, quick action 6/minuto/usuário, diagnóstico 3/minuto/usuário, duas operações simultâneas por usuário e dez por processo. Ajustar com `DARCY_AI_CHAT_PER_MINUTE`, `DARCY_AI_QUICK_ACTION_PER_MINUTE`, `DARCY_AI_DIAGNOSIS_PER_MINUTE`, `DARCY_AI_USER_CONCURRENCY` e `DARCY_AI_PROCESS_CONCURRENCY`. Cada valor deve ser inteiro entre 1 e 100. O limite de 10000 chaves ativas por processo não é configurável.
+
+Uma requisição admitida conta na janela de 60 segundos. Existe deadline HTTP de 45 segundos. A resposta pode encerrar com 504 ou o cliente pode desconectar, mas o slot permanece ocupado enquanto a operação assíncrona ainda estiver ativa. Ele é liberado somente após conclusão ou erro observado do provider. Isso evita liberar capacidade artificialmente quando um SDK ignora cancelamento; um provider indefinidamente pendente pode reduzir a capacidade até o reinício do processo. Rejeições devolvem HTTP 429, `Retry-After` e `AI_USAGE_LIMIT` antes do controller e do provider. Nenhum endereço IP ou conteúdo acadêmico entra na chave de controle; usa-se o ID autenticado pelo Supabase.
+
+O armazenamento é em memória e separado por processo. Réplicas não compartilham contadores, portanto esta política **não fornece limite global distribuído**. Para produção com múltiplas instâncias será necessário um armazenamento compartilhado e testes de falha desse armazenamento antes de habilitar a política. Os números acima são parâmetros de homologação, não cotas comerciais ou estimativas de custo.

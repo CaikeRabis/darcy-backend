@@ -30,6 +30,7 @@
 import { Router } from 'express'
 import { DarcyController } from '../controllers/DarcyController'
 import { requireAuth } from '../middlewares/requireAuth'
+import { createAiUsageLimit } from '../middlewares/aiUsageLimit'
 
 const router = Router()
 
@@ -39,9 +40,9 @@ router.get('/ready', DarcyController.readiness)
 
 // Chat principal — mensagem do pesquisador → resposta do DARCY.
 // O serviço não depende de Profile/Project; o JWT validado é a identidade necessária.
-router.post('/chat', requireAuth, DarcyController.chat)
+router.post('/chat', requireAuth, createAiUsageLimit('chat'), DarcyController.chat)
 
 // Ações Rápidas do editor (validar coerência, sugerir refs, etc.)
-router.post('/quick-action', requireAuth, DarcyController.quickAction)
+router.post('/quick-action', requireAuth, createAiUsageLimit('quickAction'), DarcyController.quickAction)
 
 export default router

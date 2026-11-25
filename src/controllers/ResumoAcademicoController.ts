@@ -34,6 +34,7 @@ import {
 } from '../services/ResumoAcademicoTextVersionService'
 import { isScientificDiagnosisEnabled } from '../config/scientificDiagnosis'
 import { ScientificDiagnosisService } from '../services/ScientificDiagnosisService'
+import { runLimitedAiOperation } from '../middlewares/aiUsageLimit'
 import { getOwnedScientificDiagnosis, listOwnedScientificDiagnoses, persistScientificDiagnosis } from '../services/ScientificDiagnosisPersistenceService'
 import { ResumoAcademicoSection } from '@prisma/client'
 
@@ -170,12 +171,14 @@ export class ResumoAcademicoController {
     }
 
     try {
-      const result = await new ScientificDiagnosisService(undefined, { persist: persistScientificDiagnosis }).diagnose(
+      if (response.destroyed) return
+      const result = await runLimitedAiOperation(response, () => new ScientificDiagnosisService(undefined, { persist: persistScientificDiagnosis }).diagnose(
         paramsResult.data.projectId,
         profileId,
         bodyResult.data.expectedRevision,
         bodyResult.data.scope,
-      )
+      ))
+      if (response.writableEnded || response.destroyed) return
 
       if (result.status === 'not_found') {
         sendProjectNotFound(response)

@@ -30,6 +30,7 @@ import { verifyDatabaseReadiness } from '../lib/readiness'
 import { getE2EEnvironmentIdentity } from '../config/e2eEnvironment'
 import { AIService } from '../services/ai/AIService'
 import { getOwnedResumoScientificContext } from '../services/ResumoAcademicoService'
+import { runLimitedAiOperation } from '../middlewares/aiUsageLimit'
 import type { ProjectContext } from '../types/darcy.types'
 
 /* ------------------------------------------------------------------ */
@@ -162,7 +163,9 @@ export class DarcyController {
 
     // 2. Delega ao serviço
     const service = AIService.getInstance()
-    const result = await service.generateDarcyResponse(contextualizedContext, userMessage)
+    if (res.destroyed) return
+    const result = await runLimitedAiOperation(res, () => service.generateDarcyResponse(contextualizedContext, userMessage))
+    if (res.writableEnded || res.destroyed) return
 
     // 3. Serializa a resposta
     if (!result.ok) {
@@ -223,7 +226,9 @@ export class DarcyController {
     }
 
     const service = AIService.getInstance()
-    const result = await service.executeQuickAction(actionId, contextualizedContext)
+    if (res.destroyed) return
+    const result = await runLimitedAiOperation(res, () => service.executeQuickAction(actionId, contextualizedContext))
+    if (res.writableEnded || res.destroyed) return
 
     if (!result.ok) {
       res.status(502).json(result)
